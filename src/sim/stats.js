@@ -15,11 +15,11 @@ export function emptyStats() {
 }
 
 export const WEIGHTS = {
-  ST: { goal: 1.05, assist: 0.7, tackle: 0.22, intercept: 0.2, pass: 0.035, prog: 0.03, key: 0.2, shotOn: 0.1, shotOff: -0.02, lost: -0.07, foul: -0.2, conceded: -0.03, clean: 0.05 },
-  W: { goal: 1.0, assist: 0.75, tackle: 0.24, intercept: 0.2, pass: 0.04, prog: 0.03, key: 0.22, shotOn: 0.09, shotOff: -0.02, lost: -0.08, foul: -0.2, conceded: -0.03, clean: 0.05 },
-  AM: { goal: 1.0, assist: 0.8, tackle: 0.26, intercept: 0.22, pass: 0.045, prog: 0.035, key: 0.25, shotOn: 0.09, shotOff: -0.02, lost: -0.09, foul: -0.2, conceded: -0.04, clean: 0.08 },
-  CM: { goal: 1.0, assist: 0.8, tackle: 0.33, intercept: 0.3, pass: 0.055, prog: 0.035, key: 0.22, shotOn: 0.08, shotOff: -0.02, lost: -0.1, foul: -0.2, conceded: -0.07, clean: 0.2 },
-  DEF: { goal: 1.1, assist: 0.8, tackle: 0.4, intercept: 0.36, pass: 0.05, prog: 0.03, key: 0.2, shotOn: 0.08, shotOff: -0.02, lost: -0.14, foul: -0.22, conceded: -0.15, clean: 0.45 },
+  ST: { goal: 1.05, assist: 0.7, tackle: 0.22, intercept: 0.16, pass: 0.035, prog: 0.03, key: 0.2, shotOn: 0.1, shotOff: -0.02, lost: -0.07, foul: -0.2, conceded: -0.03, clean: 0.05 },
+  W: { goal: 1.0, assist: 0.75, tackle: 0.24, intercept: 0.17, pass: 0.04, prog: 0.03, key: 0.22, shotOn: 0.09, shotOff: -0.02, lost: -0.08, foul: -0.2, conceded: -0.03, clean: 0.05 },
+  AM: { goal: 1.0, assist: 0.8, tackle: 0.26, intercept: 0.18, pass: 0.045, prog: 0.035, key: 0.25, shotOn: 0.09, shotOff: -0.02, lost: -0.09, foul: -0.2, conceded: -0.04, clean: 0.08 },
+  CM: { goal: 1.0, assist: 0.8, tackle: 0.33, intercept: 0.25, pass: 0.055, prog: 0.035, key: 0.22, shotOn: 0.08, shotOff: -0.02, lost: -0.1, foul: -0.2, conceded: -0.07, clean: 0.2 },
+  DEF: { goal: 1.1, assist: 0.8, tackle: 0.4, intercept: 0.3, pass: 0.05, prog: 0.03, key: 0.2, shotOn: 0.08, shotOff: -0.02, lost: -0.14, foul: -0.22, conceded: -0.15, clean: 0.45 },
   GK: { goal: 1.0, assist: 0.6, tackle: 0.2, intercept: 0.15, pass: 0.02, prog: 0.01, key: 0.1, shotOn: 0.05, shotOff: 0, lost: -0.1, foul: -0.3, conceded: -0.3, clean: 0.6, save: 0.3 },
 };
 
@@ -164,8 +164,8 @@ export class MatchStats {
     this.pendingPass = null;
     const passer = pp.passer;
     if (interceptor) {
-      this.s(interceptor).interceptions++;
-      this.add(interceptor, 'interceptions', this.w(interceptor).intercept);
+      const n = ++this.s(interceptor).interceptions;
+      this.add(interceptor, 'interceptions', this.w(interceptor).intercept * (n <= 3 ? 1 : Math.pow(0.8, n - 3)));
       this.credit(interceptor, 'interception');
     }
     if (byTeam != null && byTeam !== passer.team) {
@@ -182,14 +182,14 @@ export class MatchStats {
     if (pp) {
       if (pp.passer === p) this.pendingPass = null;
       else if (pp.team === team) this.completePass(pp, p);
-      else this.failPass(pp, p, team);
+      else this.failPass(pp, this.m.time - pp.t <= 3 ? p : null, team); // interception = cut out while the pass is live
     }
     let tackleCredited = false;
     const pt = this.pendingTackle;
     if (pt) {
       if (pt.team === team && this.m.time - pt.t <= RULES.TACKLE_WINDOW) {
-        this.s(pt.tackler).tacklesWon++;
-        this.add(pt.tackler, 'tackles', this.w(pt.tackler).tackle);
+        const n = ++this.s(pt.tackler).tacklesWon;
+        this.add(pt.tackler, 'tackles', this.w(pt.tackler).tackle * (n <= 4 ? 1 : Math.pow(0.85, n - 4)));
         this.credit(pt.tackler, 'tackleWon');
         if (pt.victim) { this.s(pt.victim).possLost++; this.add(pt.victim, 'lost', this.w(pt.victim).lost); this.credit(pt.victim, 'possessionLost'); }
         tackleCredited = true;

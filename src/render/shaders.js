@@ -11,6 +11,8 @@ export const SU = {
   uToon: { value: 0 },
   uShadowAmt: { value: 0 },
   uLineWidth: { value: 1.2 },
+  uMinWidth: { value: 1.0 },
+  uTaper: { value: 22 },
   uResolution: { value: new THREE.Vector2(1280, 720) },
   uTime: { value: 0 },
   uCrowd: { value: 0 },
@@ -175,6 +177,8 @@ ${NET_GLSL}
 #endif
 uniform float uLineWidth;
 uniform float uWidthScale;
+uniform float uMinWidth;
+uniform float uTaper;
 uniform vec2 uResolution;
 #include <common>
 #include <fog_pars_vertex>
@@ -231,11 +235,14 @@ void main() {
   dir.x /= aspect;
   offset.x /= aspect;
   if (position.x < 0.0) offset *= -1.0;
-  if (position.y < 0.0) offset += -dir;
-  else if (position.y > 1.0) offset += dir;
-  offset *= uLineWidth * uWidthScale;
-  offset /= uResolution.y;
+  // square caps so thick lines join cleanly at corners
+  offset += (position.y < 0.5) ? -dir : dir;
   vec4 clip = (position.y < 0.5) ? clipStart : clipEnd;
+  // thick ink thins out with distance so far figures stay readable
+  float wpx = uLineWidth * uWidthScale;
+  wpx = max(min(wpx, uMinWidth), wpx * clamp(uTaper / max(clip.w, 0.1), 0.35, 1.0));
+  offset *= wpx;
+  offset /= uResolution.y;
   offset *= clip.w;
   clip.xy += offset;
   clip.z -= 0.00025 * clip.w;
@@ -263,7 +270,7 @@ export function makeEdgeMaterial(o = {}) {
   if (o.net) defines.NET = '';
   const uniforms = THREE.UniformsUtils.merge([THREE.UniformsLib.fog]);
   Object.assign(uniforms, {
-    uLineWidth: SU.uLineWidth, uResolution: SU.uResolution, uParts: SU.uParts,
+    uLineWidth: SU.uLineWidth, uMinWidth: SU.uMinWidth, uTaper: SU.uTaper, uResolution: SU.uResolution, uParts: SU.uParts,
     uTime: SU.uTime, uCrowd: SU.uCrowd,
     uNetA: SU.uNetA, uNetDA: SU.uNetDA, uNetB: SU.uNetB, uNetDB: SU.uNetDB,
     uColor: { value: palette[o.role ?? R.INK] },

@@ -117,7 +117,10 @@ export class SceneView {
 
   applyLineWidth() {
     const st = STYLES[this.style];
-    SU.uLineWidth.value = st.lineWidth * (this.pixelRatio || 1);
+    const pr = this.pixelRatio || 1;
+    SU.uLineWidth.value = st.lineWidth * pr;
+    SU.uMinWidth.value = Math.min(st.lineWidth, 1.1) * pr;
+    SU.uTaper.value = st.name === 'neo' ? 16 : 40;
   }
 
   // ------------------------------------------------------------- style
@@ -218,7 +221,7 @@ export class SceneView {
         const mats = an.update(ctx);
         const base = i * PER;
         for (let k = 0; k < PER; k++) this.batch.setMatrix(base + k, mats[k]);
-        if (ctx.local && this.hideHead) this.batch.hide(base + P.HEAD);
+        if (ctx.local && this.hideHead) { this.batch.hide(base + P.HEAD); this.batch.hide(base + P.TORSO); }
         if (this.blobShowPlayers) this.blobs.add(an.root.x, an.root.z, 0.95, 0.2);
       }
       const h = Math.max(0, this.ballPos.y - BALL_R);
@@ -260,7 +263,11 @@ export class SceneView {
 
   updateCamera(cam, dt, alpha) {
     const c = this.camera;
-    if (cam.fov && Math.abs(cam.fov - c.fov) > 0.01) { c.fov = cam.fov; c.updateProjectionMatrix(); }
+    if (cam.fov) {
+      // the FOV setting is horizontal (as in most first-person games); three.js wants vertical
+      const v = THREE.MathUtils.clamp(2 * Math.atan(Math.tan((cam.fov * Math.PI) / 360) / c.aspect) * 180 / Math.PI, 35, 95);
+      if (Math.abs(v - c.fov) > 0.01) { c.fov = v; c.updateProjectionMatrix(); }
+    }
     if (cam.mode === 'fp' && this.localPlayer && this.match) {
       const p = this.localPlayer;
       const x = p.prevPos.x + (p.pos.x - p.prevPos.x) * alpha;
@@ -283,8 +290,9 @@ export class SceneView {
       c.position.set(Math.cos(a) * cam.radius, cam.height, Math.sin(a) * cam.radius);
       c.lookAt(cam.target || new THREE.Vector3(0, 0, 0));
     } else if (cam.pos) {
-      c.position.copy(cam.pos);
-      if (cam.look) c.lookAt(cam.look); else c.rotation.set(cam.pitch || 0, (cam.yaw || 0) + Math.PI, 0, 'YXZ');
+      const P = cam.pos, L = cam.look;
+      c.position.set(P.x ?? P[0], P.y ?? P[1], P.z ?? P[2]);
+      if (L) c.lookAt(L.x ?? L[0], L.y ?? L[1], L.z ?? L[2]); else c.rotation.set(cam.pitch || 0, (cam.yaw || 0) + Math.PI, 0, 'YXZ');
     }
   }
 

@@ -313,7 +313,7 @@ export class Animator {
     const pelvis = U.pelvis.set(root.x, pelvisY, root.z);
     const fwd = U.fwd.set(Math.sin(yaw), 0, Math.cos(yaw));
     const side = U.side.set(Math.cos(yaw), 0, -Math.sin(yaw));
-    if (local) pelvis.addScaledVector(fwd, -0.1); // keep the torso clear of the first-person camera
+    if (local) pelvis.addScaledVector(fwd, -0.02); // first person: head and torso are hidden, hips sit under the eyes
     eA.set(0, yaw - twist * 0.4, 0, 'YXZ');
     Mx[P.PELVIS].makeRotationFromEuler(eA).setPosition(pelvis);
     const pelvisM = Mx[P.PELVIS];

@@ -427,9 +427,9 @@ export class AIDirector {
     for (const o of m.opponents(p.team)) { const d = o.pos.distXZ(p.pos); if (d < near) { near = d; nearOpp = o; } }
     // acknowledge a pass request from the human
     const h = m.human;
-    if (h && h.team === p.team && h.requestUntil > now && ai.ackFor !== h.requestUntil) {
+    if (h && h.team === p.team && h.requestUntil > now && h.ackedReq !== h.requestUntil) {
       p.ackUntil = now + 1.2;
-      ai.ackFor = h.requestUntil;
+      h.ackedReq = h.requestUntil;
       m.events.emit('ack', { player: p, to: h, t: now });
     }
     const urgent = near < 1.6 && now - ai.ownedSince > 0.2;

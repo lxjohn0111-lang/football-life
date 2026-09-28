@@ -62,8 +62,8 @@ export class Input {
   requestLock() {
     if (!this.lockSupported) { this.dragMode = true; return false; }
     try {
-      const r = this.el.requestPointerLock({ unadjustedMovement: false });
-      if (r && r.catch) r.catch(() => { this.dragMode = true; if (this.onLockError) this.onLockError(); });
+      const r = this.el.requestPointerLock();
+      if (r && r.catch) r.catch(() => { if (this.onLockError) this.onLockError(); });
     } catch (e) {
       this.dragMode = true;
       return false;
@@ -75,7 +75,7 @@ export class Input {
   lockChange() {
     const was = this.locked;
     this.locked = document.pointerLockElement === this.el;
-    if (this.locked) this.dragMode = false;
+    if (this.locked) { this.dragMode = false; if (!was && this.onLockGained) this.onLockGained(); }
     if (was && !this.locked) {
       this.lastLockExit = performance.now();
       this.releaseAll();

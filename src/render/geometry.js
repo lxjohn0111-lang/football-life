@@ -211,8 +211,9 @@ export class GeoBuilder {
 
   buildEdges() {
     const g = new THREE.InstancedBufferGeometry();
-    const base = [-1, 2, 0, 1, 2, 0, -1, 1, 0, 1, 1, 0, -1, 0, 0, 1, 0, 0, -1, -1, 0, 1, -1, 0];
-    g.setIndex([0, 2, 1, 2, 3, 1, 2, 4, 3, 4, 5, 3, 4, 6, 5, 6, 7, 5]);
+    // one quad per edge; the ends are pushed out by half the width (square caps)
+    const base = [-1, 0, 0, 1, 0, 0, -1, 1, 0, 1, 1, 0];
+    g.setIndex([0, 1, 2, 2, 1, 3]);
     g.setAttribute('position', new THREE.Float32BufferAttribute(base, 3));
     const n = this.eA.length / 3;
     g.setAttribute('iA', new THREE.InstancedBufferAttribute(new Float32Array(this.eA), 3));

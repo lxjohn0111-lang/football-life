@@ -506,6 +506,10 @@ export class Screens {
   }
 
   lockRefused() {
-    this.show(`<div class="panel" style="text-align:center"><div class="lockmsg">Mouse capture was refused</div><p class="small">Click again to resume. If it keeps failing, hold a mouse button and drag to look (or use the arrow keys).</p><button class="btn primary" data-act="r">Resume</button></div>`, { r: () => this.app.resume() });
+    this.show(`<div class="panel" style="text-align:center"><div class="lockmsg">Click to resume</div><p class="small">The browser did not capture the mouse. Click again (browsers refuse for about a second after Esc).<br>Or play without capture: hold a mouse button and drag to look, or use the arrow keys.</p>
+      <div class="row" style="justify-content:center"><button class="btn primary" data-act="r">Resume</button><button class="btn" data-act="d">Play with drag-look</button></div></div>`, {
+      r: () => this.app.resume(),
+      d: () => { this.app.input.dragMode = true; this.app.resume(); },
+    });
   }
 }

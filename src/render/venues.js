@@ -2,7 +2,7 @@
 // distinct locations. All static geometry is merged into one solid mesh and one
 // edge batch (roles give each part its colour); crowds animate in the shader.
 import * as THREE from 'three';
-import { GeoBuilder, tBox, tSphere } from './geometry.js';
+import { GeoBuilder, tBox, tSphere, tIco, tFrom } from './geometry.js';
 import { R } from './palette.js';
 import { PITCH, GOAL, AREA } from '../sim/constants.js';
 
@@ -165,8 +165,9 @@ function person(f, lx, y, lz, rand, seated = true) {
   const role = CROWD_ROLES[Math.floor(rand() * CROWD_ROLES.length)];
   const bob = [rand(), 1];
   const h = seated ? 0.46 : 0.62;
-  f.box(role, 0.42, h, 0.28, lx, y + h / 2, lz, { bob });
-  f.sphere(SKINS[Math.floor(rand() * 3)], 0.13, lx, y + h + 0.15, lz, { ws: 6, hs: 4, bob });
+  f.box(role, 0.44, h, 0.28, lx, y + h / 2, lz, { bob });
+  const [x, z] = f.w(lx, lz);
+  f.b.add(tIco(0.14, 0), GeoBuilder.mat(x, y + h + 0.16, z, 0, rand() * 6, 0), SKINS[Math.floor(rand() * 3)], { bob });
 }
 
 // A tiered stand. Local frame: x along the stand, z away from the pitch.
@@ -180,14 +181,12 @@ function stand(b, o, rand, stats) {
   for (let i = 0; i < rows; i++) {
     const y = base + i * rh;
     f.box(roles[Math.floor(i / (o.band || 2)) % roles.length], len, rh, rd, 0, y + rh / 2, z0 + rd * (i + 0.5));
-    // crowd on this row
+    // seats on this row (spectators are sampled later to a fixed budget)
     if (o.density > 0) {
       const n = Math.floor(len / 0.62);
       for (let k = 0; k < n; k++) {
-        if (rand() > o.density) continue;
         const lx = -len / 2 + 0.31 + k * 0.62 + (rand() - 0.5) * 0.1;
-        person(f, lx, y + rh, z0 + rd * (i + 0.5) + 0.05, rand, true);
-        stats.people++;
+        stats.seats.push({ f, lx, y: y + rh, lz: z0 + rd * (i + 0.5) + 0.05, w: o.density, seated: true });
       }
     }
   }
@@ -269,6 +268,10 @@ function tree(b, x, z, s, rand) {
   b.cone(R.TREE, 1.3 * s, 3.2 * s, 8, x, 2.2 * s + 3.6 * s, z, { ry: rand() * 3 });
 }
 
+// unit pyramid (1 x 1 base, height 1) for roofs, scaled per building
+const pyramidT = () => tFrom('pyramid', () => { const g = new THREE.ConeGeometry(Math.SQRT1_2, 1, 4); g.rotateY(Math.PI / 4); return g; }, 30);
+function roof(b, x, y, z, w, h, d, ry) { b.add(pyramidT(), GeoBuilder.mat(x, y + h / 2, z, 0, ry, 0, w, h, d), R.ROOF_TILE); }
+
 function house(b, x, z, ry, rand) {
   const f = new Frame(b, x, z, ry);
   const w = 7 + rand() * 3, d = 6 + rand() * 2, h = 5 + rand() * 2.5;
@@ -276,7 +279,7 @@ function house(b, x, z, ry, rand) {
   f.box(role, w, h, d, 0, h / 2, 0);
   // pyramid roof: 4-sided cone rotated 45 degrees and stretched
   const [wx, wz] = f.w(0, 0);
-  b.cone(R.ROOF_TILE, 0.72, 2.6, 4, wx, h + 1.3, wz, { ry: ry + Math.PI / 4, sx: w * 0.99, sz: d * 0.99 });
+  roof(b, wx, h, wz, w + 0.4, 2.6, d + 0.4, ry);
   // windows and door facing the pitch
   for (let i = -1; i <= 1; i += 2) f.box(R.STAND_C, 1.3, 1.2, 0.08, i * w * 0.25, h * 0.62, -d / 2 - 0.04);
   f.box(R.WOOD, 1.1, 2.1, 0.08, 0, 1.05, -d / 2 - 0.04);
@@ -355,7 +358,7 @@ export function buildVenue(type, ctx) {
   const density = quality === 'low' ? 0.35 : quality === 'medium' ? 0.65 : 1;
   const b = new GeoBuilder({ bob: true, atlas: true });
   const bc = new GeoBuilder(); // shadow casters near the pitch (goal frames)
-  const stats = { people: 0 };
+  const stats = { people: 0, seats: [] };
   const screens = [];
   const words = [homeName.toUpperCase(), 'FIRST TOUCH', 'PLAY FAIR', 'KICKWELL', 'GRASSROOTS FC', 'NORTHLINE', 'VOLTA SPORTS', 'BLUEBIRD BANK'];
   atlas.reset();
@@ -370,13 +373,13 @@ export function buildVenue(type, ctx) {
       stand(b, { cx: 0, cz: -31, ry: Math.PI, len: 26, rows: 4, rowHeight: 0.38, base: 0.4, roles: [R.WOOD, R.STAND_B], roof: true, roofClear: 2.6, density: 0.6 * density, wallRole: R.WOOD }, rand, stats);
       // people leaning on the fence
       const ff = new Frame(b, 0, 30.2, 0);
-      for (let i = 0; i < 40 * density; i++) { person(ff, -34 + rand() * 68, 0, rand() * 0.8, rand, false); stats.people++; }
+      for (let i = 0; i < 60; i++) stats.seats.push({ f: ff, lx: -34 + rand() * 68, y: 0, lz: rand() * 0.8, w: 1, seated: false });
       dugouts(b, 26.5);
       // clubhouse behind a goal
       const ch = new Frame(b, -47, 8, Math.PI / 2);
       ch.box(R.HOUSE_B, 16, 4.5, 8, 0, 2.25, 0);
       const [cx, cz] = ch.w(0, 0);
-      b.cone(R.ROOF_TILE, 0.72, 2.4, 4, cx, 5.7, cz, { ry: Math.PI / 2 + Math.PI / 4, sx: 8, sz: 16 });
+      roof(b, cx, 4.5, cz, 16.4, 2.4, 8.4, Math.PI / 2);
       ch.box(R.WOOD, 2, 2.2, 0.1, 0, 1.1, -4.05);
       ch.box(R.STAND_C, 3, 1.2, 0.1, -5, 2.6, -4.05);
       ch.box(R.STAND_C, 3, 1.2, 0.1, 5, 2.6, -4.05);
@@ -490,6 +493,16 @@ export function buildVenue(type, ctx) {
       for (let i = 0; i < 6; i++) b.sphere(R.BALL_W, 0.11, 20 + i * 0.3, 0.11, 33 + (i % 2) * 0.25, { ws: 8, hs: 6 });
       screens.push(scoreboardFrame(b, 46, 3, 20, -Math.PI / 2, 4, 1.5));
       break;
+    }
+  }
+  // fill the stands up to the venue's crowd budget (weighted by each stand's popularity)
+  const budget = Math.round(VENUES[type].crowd * density);
+  if (budget > 0 && stats.seats.length) {
+    const seats = stats.seats;
+    const wsum = seats.reduce((a, q) => a + q.w, 0);
+    const p = Math.min(1, budget / wsum);
+    for (const q of seats) {
+      if (rand() < q.w * p) { person(q.f, q.lx, q.y, q.lz, rand, q.seated); stats.people++; }
     }
   }
   v.people = stats.people;

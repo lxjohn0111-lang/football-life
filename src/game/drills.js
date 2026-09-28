@@ -124,6 +124,7 @@ export class Drill {
       this.started = false;
     } else {
       h.pos.set(-6, 0, 0);
+      h.yaw = Math.PI / 2;
       m.teams[0].players.find((p) => !p.isHuman).pos.set(4, 0, 10);
       const def = m.teams[1].players.find((p) => !p.isGK);
       def.pos.set(14, 0, 0);

@@ -45,7 +45,8 @@ class App {
 
     this.input.onPause = () => this.togglePause();
     this.input.onLockLost = () => { if (this.session && !this.paused) this.pause(); };
-    this.input.onLockError = () => { if (this.session && this.paused) this.screens.lockRefused(); };
+    this.input.onLockGained = () => { if (this.session && this.awaitingLock) this.unpause(); };
+    this.input.onLockError = () => { if (this.session && this.awaitingLock) { this.awaitingLock = false; this.screens.lockRefused(); } };
     document.addEventListener('visibilitychange', () => { if (document.hidden) this.onBlur(); else this.onFocus(); });
     window.addEventListener('blur', () => this.onBlur());
     window.addEventListener('focus', () => this.onFocus());
@@ -60,12 +61,16 @@ class App {
     this.screens.mainMenu();
     requestAnimationFrame((t) => this.loop(t));
     window.__ft = this;
+    // test hook: advance the live simulation deterministically by n fixed steps
+    this.debugStep = (n) => { const m = (this.session || this.menuSession).match; for (let i = 0; i < n; i++) m.step(1 / 120); };
     const auto = this.params.get('auto');
     if (auto) setTimeout(() => this.autostart(auto), 50);
   }
 
   autostart(kind) {
-    if (kind === 'quick') this.startQuickMatch({ home: this.params.get('home') || 'millbrook', away: this.params.get('away') || 'ashford', role: this.params.get('role') || 'ST', venue: this.params.get('venue') });
+    const half = this.params.get('half') ? Number(this.params.get('half')) : undefined;
+    if (half) this.testHalf = half;
+    if (kind === 'quick') this.startQuickMatch({ home: this.params.get('home') || 'millbrook', away: this.params.get('away') || 'ashford', role: this.params.get('role') || 'ST', venue: this.params.get('venue'), halfLength: half });
     else if (kind === 'practice') this.startTraining('practice');
     else if (kind.startsWith('drill:')) this.startTraining(kind.slice(6));
     else if (kind === 'hub') this.screens.hub();
@@ -171,7 +176,7 @@ class App {
     const home = clubById(fx.home), away = clubById(fx.away);
     const side = fx.home === c.clubId ? 0 : 1;
     const human = { ...c.player };
-    const cfg = this.matchConfig({ homeClub: home, awayClub: away, human, humanSide: side, seed: hashString(`${c.seed}:${c.seasonNo}:${fx.round}:${prep.id}`) });
+    const cfg = this.matchConfig({ homeClub: home, awayClub: away, human, humanSide: side, seed: hashString(`${c.seed}:${c.seasonNo}:${fx.round}:${prep.id}`), halfLength: this.testHalf });
     const venue = fx.final ? 'continental' : tierInfo(home.tier).venue;
     const matchId = prep.id;
     return this.startSession({
@@ -198,12 +203,24 @@ class App {
   // called from a click handler (user gesture) so pointer lock can be requested
   resume() {
     if (!this.session) return;
+    this.input.active = true;
+    if (this.input.dragMode || this.input.locked) { this.unpause(); return; }
+    // stay paused until the browser actually grants pointer lock
+    this.screens.clear();
+    this.awaitingLock = true;
+    const ok = this.input.requestLock();
+    if (!ok) { this.awaitingLock = false; this.unpause(); return; }
+    clearTimeout(this.lockTimer);
+    this.lockTimer = setTimeout(() => {
+      if (this.awaitingLock && !this.input.locked) { this.awaitingLock = false; this.screens.lockRefused(); }
+    }, 1500);
+  }
+  unpause() {
+    this.awaitingLock = false;
     this.screens.clear();
     this.paused = false;
-    this.session.setPaused(false);
+    if (this.session) this.session.setPaused(false);
     this.audio.resume();
-    this.input.active = true;
-    this.input.requestLock();
   }
   onBlur() {
     this.audio.setMuted(true);
