@@ -553,7 +553,8 @@ export class Match {
 
   checkDeadlock() {
     const b = this.ball;
-    if (b.owner || b.speed > 0.3) { this.lastProgress = Math.max(this.lastProgress, this.time - (b.owner ? 0 : 0)); if (!b.owner) this.lastProgress = this.time; return; }
+    // progress = someone has the ball or it is moving
+    if (b.owner || b.speed > 0.3) { this.lastProgress = this.time; return; }
     if (this.time - this.lastProgress > 9) {
       // nobody has been able to reach a still ball: drop ball to the team that didn't touch it last
       const lt = b.lastTouch;

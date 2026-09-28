@@ -207,10 +207,11 @@ export class SceneView {
       const now = m.time - (1 - alpha) * (1 / 120);
       const b = m.ball;
       this.ballPos.set(b.prevPos.x + (b.pos.x - b.prevPos.x) * alpha, b.prevPos.y + (b.pos.y - b.prevPos.y) * alpha, b.prevPos.z + (b.pos.z - b.prevPos.z) * alpha);
-      const qa = new THREE.Quaternion(b.prevQ[0], b.prevQ[1], b.prevQ[2], b.prevQ[3]);
-      const qb = new THREE.Quaternion(b.q[0], b.q[1], b.q[2], b.q[3]);
+      const qa = this._qa || (this._qa = new THREE.Quaternion()), qb = this._qb || (this._qb = new THREE.Quaternion());
+      qa.set(b.prevQ[0], b.prevQ[1], b.prevQ[2], b.prevQ[3]);
+      qb.set(b.q[0], b.q[1], b.q[2], b.q[3]);
       this.ballQ.slerpQuaternions(qa, qb, alpha);
-      this.ballM.compose(this.ballPos, this.ballQ, new THREE.Vector3(1, 1, 1));
+      this.ballM.compose(this.ballPos, this.ballQ, this._one || (this._one = new THREE.Vector3(1, 1, 1)));
       this.batch.setMatrix(this.batch.ballRow, this.ballM);
       const ctx = { match: m, alpha, dt, now, ball: this.ballPos, local: false };
       this.blobs.begin();
@@ -290,7 +291,7 @@ export class SceneView {
     } else if (cam.mode === 'orbit') {
       const a = cam.angle;
       c.position.set(Math.cos(a) * cam.radius, cam.height, Math.sin(a) * cam.radius);
-      c.lookAt(cam.target || new THREE.Vector3(0, 0, 0));
+      c.lookAt(cam.target || (this._origin || (this._origin = new THREE.Vector3())));
     } else if (cam.pos) {
       const P = cam.pos, L = cam.look;
       c.position.set(P.x ?? P[0], P.y ?? P[1], P.z ?? P[2]);

@@ -389,7 +389,7 @@ export class Animator {
   }
 
   poseDive(p, m, root, yaw, Mx) {
-    const vol = keeperVolume(m, p, {});
+    const vol = keeperVolume(m, p, this.vol || (this.vol = {}));
     const hands = D.hands.set(vol.bx, vol.by, vol.bz);
     const axis = D.axis.subVectors(hands, D.body.set(vol.ax, vol.ay, vol.az));
     axis.divideScalar(axis.length() || 1);
