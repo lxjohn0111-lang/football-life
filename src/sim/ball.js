@@ -173,23 +173,30 @@ export function netBackX(y) {
   return PITCH.HL + GOAL.DEPTH + (GOAL.TOP_DEPTH - GOAL.DEPTH) * t;
 }
 
-const NET_K = 520, NET_C = 34, NET_MAX = 0.42;
+const NET_MAX = 0.42;
 
+// The net is soft and inelastic: it absorbs the ball's speed (more strongly the
+// deeper it bulges) and only nudges it back gently, so the ball drops in the goal.
 function netSoft(ball, nx, ny, nz, pen, h, gi) {
   // nx.. = inward normal (towards goal interior). pen = penetration beyond net surface
   const v = ball.vel;
-  const vn = v.x * nx + v.y * ny + v.z * nz;
-  let a = NET_K * pen;
-  v.x += nx * a * h; v.y += ny * a * h; v.z += nz * a * h;
+  let vn = v.x * nx + v.y * ny + v.z * nz;
   if (vn < 0) {
-    const damp = Math.min(1, NET_C * h);
-    v.x -= nx * vn * damp; v.y -= ny * vn * damp; v.z -= nz * vn * damp;
+    const k = Math.min(1, (35 + 900 * pen) * h);
+    const dv = -vn * k;
+    v.x += nx * dv; v.y += ny * dv; v.z += nz * dv;
+  } else {
+    const push = 40 * pen * h;
+    v.x += nx * push; v.y += ny * push; v.z += nz * push;
+    vn = v.x * nx + v.y * ny + v.z * nz;
+    if (vn > 1.2) { const c = vn - 1.2; v.x -= nx * c; v.y -= ny * c; v.z -= nz * c; }
   }
   // friction along the mesh
-  v.x *= 1 - 3 * h; v.z *= 1 - 3 * h;
+  const f = 1 - Math.min(0.5, 4 * h);
+  v.x *= f; v.z *= f;
   if (pen > NET_MAX) {
-    const push = pen - NET_MAX;
-    ball.pos.x += nx * push; ball.pos.y += ny * push; ball.pos.z += nz * push;
+    const excess = pen - NET_MAX;
+    ball.pos.x += nx * excess; ball.pos.y += ny * excess; ball.pos.z += nz * excess;
   }
   const n = ball.net[gi];
   if (!n || pen > n.depth) {
@@ -211,7 +218,10 @@ function collideGoal(ball, s, gi, h, hooks) {
 
   if (ax < hl - R) return;
   const back = netBackX(p.y);
-  const inside = Math.abs(p.z) < hw && p.y < H && ax < back;
+  // a ball that entered through the mouth stays caught by the net even if a
+  // very fast shot momentarily bulges past the net surfaces
+  const cr = ball.crossing[gi];
+  const inside = (cr && cr.inMouth && ax > hl) || (Math.abs(p.z) < hw && p.y < H && ax < back);
   if (inside) {
     // soft net from the inside
     const bx = back - ax;               // distance to back plane (approx along x)
@@ -229,6 +239,11 @@ function collideGoal(ball, s, gi, h, hooks) {
     if (H - p.y < R && ax > hl) {
       netSoft(ball, 0, -1, 0, R - (H - p.y), h, gi);
     }
+    // hard limit: the net never lets the ball through
+    const lim = netBackX(Math.min(p.y, H)) + 0.45;
+    if (ax > lim) { p.x = s * lim; if (v.x * s > 0) v.x *= -0.1; }
+    if (Math.abs(p.z) > hw + 0.45) { p.z = Math.sign(p.z) * (hw + 0.45); v.z *= -0.1; }
+    if (p.y > H + 0.45) { p.y = H + 0.45; if (v.y > 0) v.y *= -0.1; }
   } else if (ax > hl - R && ax < back + R && p.y < H + R) {
     // outside of the net: firm, damped surface
     const dzOut = Math.abs(p.z) - hw;

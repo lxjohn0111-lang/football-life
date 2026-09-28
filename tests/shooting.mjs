@@ -36,6 +36,6 @@ const cfgs = [
 ];
 for (const [label, d, z, y, hold] of cfgs) {
   const c = {};
-  for (let s = 1; s <= 40; s++) { const r = trial(s, d, z * (s % 2 ? 1 : -1), y, hold); c[r] = (c[r] || 0) + 1; }
+  for (let s = 1; s <= 40; s++) { const r = trial(s, d, z * (s % 2 ? 1 : -1), y, hold, Number(process.argv[2] || 1)); c[r] = (c[r] || 0) + 1; }
   console.log(label.padEnd(26), JSON.stringify(c));
 }

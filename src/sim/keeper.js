@@ -152,7 +152,8 @@ function crossPlane(match, planeX, dirSign, maxT) {
     if (t < 0) continue;
     if (t > maxT) break;
     const x0 = pts[(i - 1) * 3], x1 = pts[i * 3];
-    if ((x0 - planeX) * dirSign > 0 && (x1 - planeX) * dirSign <= 0) {
+    // dirSign: +1 when the ball travels towards +x
+    if ((planeX - x0) * dirSign > 0 && (planeX - x1) * dirSign <= 0) {
       const f = (x0 - planeX) / (x0 - x1 || 1e-6);
       return {
         t: t - tr.step * (1 - f),
