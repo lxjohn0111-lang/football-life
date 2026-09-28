@@ -178,15 +178,23 @@ export class MatchSession {
   hudState() {
     const m = this.match, h = this.human;
     let hint = '';
+    const touch = this.input.touchMode;
     if (h) {
       const r = m.restart;
       if (m.phase === 'restart' && r && r.taker === h) {
-        hint = r.type === 'throwin' ? 'Throw-in: RMB/Space short throw · LMB long throw'
-          : r.type === 'corner' ? 'Corner: LMB cross to where you aim · RMB short pass'
-            : r.type === 'penalty' ? 'Penalty: aim and hold LMB, release to shoot'
-              : r.type === 'kickoff' ? 'Kick-off: RMB pass to a teammate'
-                : 'Free kick: RMB pass · Space through ball · LMB shoot';
-      } else if (m.phase === 'goal' || m.phase === 'halftime') hint = 'Press any action to skip';
+        hint = touch
+          ? (r.type === 'throwin' ? 'Throw-in: PASS short throw · SHOOT long throw'
+            : r.type === 'corner' ? 'Corner: SHOOT crosses to where you aim · PASS short'
+              : r.type === 'penalty' ? 'Penalty: aim, hold SHOOT and release'
+                : r.type === 'kickoff' ? 'Kick-off: PASS to a teammate'
+                  : 'Free kick: PASS · THRU · SHOOT')
+          : (r.type === 'throwin' ? 'Throw-in: RMB/Space short throw · LMB long throw'
+            : r.type === 'corner' ? 'Corner: LMB cross to where you aim · RMB short pass'
+              : r.type === 'penalty' ? 'Penalty: aim and hold LMB, release to shoot'
+                : r.type === 'kickoff' ? 'Kick-off: RMB pass to a teammate'
+                  : 'Free kick: RMB pass · Space through ball · LMB shoot');
+      } else if (m.phase === 'goal' || m.phase === 'halftime') hint = touch ? 'Tap any button to skip' : 'Press any action to skip';
+      else if (touch) hint = m.ball.owner && m.ball.owner.team === h.team && m.ball.owner !== h && h.requestUntil > m.time ? 'Pass requested' : '';
       else if (m.ball.owner === h) hint = 'LMB shoot · RMB pass · Space through ball';
       else if (m.ball.owner && m.ball.owner.team !== h.team) hint = m.ball.owner.pos.distXZ(h.pos) < 3 ? 'E tackle · C slide' : '';
       else if (m.ball.owner && m.ball.owner.team === h.team) hint = h.requestUntil > m.time ? 'Pass requested' : 'Space: call for the ball';

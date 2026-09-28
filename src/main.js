@@ -4,8 +4,9 @@ import { SceneView } from './render/view.js';
 import { AudioSystem } from './audio/audio.js';
 import { Input } from './core/input.js';
 import { Hud } from './ui/hud.js';
+import { TouchControls } from './ui/touch.js';
 import { MatchSession } from './game/session.js';
-import { loadSettings, saveSettings, loadStyle, saveStyle } from './core/settings.js';
+import { loadSettings, saveSettings, loadStyle, saveStyle, hasSavedSettings } from './core/settings.js';
 import { CLUBS, clubById, tierInfo } from './career/clubs.js';
 import { buildTeamConfig, defaultPlayer } from './career/teams.js';
 import { resolveKits } from './render/palette.js';
@@ -22,6 +23,9 @@ class App {
     document.head.appendChild(st);
     this.params = new URLSearchParams(location.search);
     this.settings = loadSettings();
+    // phones and tablets: touch controls, and a lighter default quality on first run
+    this.coarse = !!(window.matchMedia && matchMedia('(pointer: coarse)').matches);
+    if (this.coarse && !hasSavedSettings()) this.settings.quality = 'medium';
     this.canvas = document.getElementById('game');
     this.uiRoot = document.getElementById('ui');
     this.view = new SceneView(this.canvas, { quality: this.settings.quality, preserve: this.params.has('preserve') });
@@ -34,6 +38,14 @@ class App {
     this.input.sensitivity = this.settings.sensitivity;
     this.input.invertY = this.settings.invertY;
     this.hud = new Hud(this.uiRoot);
+    this.touch = new TouchControls(this, this.uiRoot);
+    this.setTouchMode(this.settings.touch === 'on' || (this.settings.touch !== 'off' && this.coarse));
+    // switch automatically between touch and mouse as the player changes device
+    window.addEventListener('pointerdown', (e) => {
+      if (this.settings.touch !== 'auto') return;
+      if (e.pointerType === 'touch' && !this.input.touchMode) this.setTouchMode(true);
+      else if (e.pointerType === 'mouse' && this.input.touchMode && !this.input.fromTouch(e)) this.setTouchMode(false);
+    }, true);
     this.store = new CareerStore();
     this.screens = new Screens(this);
     this.session = null;
@@ -42,6 +54,9 @@ class App {
     this.last = performance.now();
     this.fpsCap = Number(this.params.get('fps') || 0);
     this.frameAcc = 0;
+    // adaptive resolution (off under automated browsers unless asked for, so test
+    // screenshots stay at a fixed resolution)
+    this.adapt = { on: this.params.has('adapt') || (!navigator.webdriver && !this.fpsCap), ema: 1 / 60, scale: 1, floor: 0.5, low: 0, high: 0, check: null };
 
     this.input.onPause = () => this.togglePause();
     this.input.onLockLost = () => { if (this.session && !this.paused) this.pause(); };
@@ -51,10 +66,11 @@ class App {
     window.addEventListener('blur', () => this.onBlur());
     window.addEventListener('focus', () => this.onFocus());
     window.addEventListener('resize', () => this.view.resize());
-    // first user gesture unlocks audio
-    const unlock = () => { this.audio.init(); this.audio.resume(); };
-    window.addEventListener('pointerdown', unlock, { capture: true });
-    window.addEventListener('keydown', unlock, { capture: true });
+    // first user gesture unlocks audio (mobile browsers only accept the end of a tap)
+    const unlock = () => { this.audio.init(); if (!this.paused || !this.session) this.audio.resume(); };
+    for (const t of ['pointerdown', 'pointerup', 'touchend', 'click', 'keydown']) window.addEventListener(t, unlock, { capture: true });
+    // no pinch-zoom of the game page on iOS
+    document.addEventListener('gesturestart', (e) => e.preventDefault());
 
     document.getElementById('boot')?.remove();
     this.startMenuBackground();
@@ -80,6 +96,7 @@ class App {
   loop(t) {
     requestAnimationFrame((tt) => this.loop(tt));
     let dt = (t - this.last) / 1000;
+    this.adaptResolution(dt);
     if (this.fpsCap) {
       // test hook: emulate a lower frame rate
       this.frameAcc += dt;
@@ -91,7 +108,61 @@ class App {
     dt = Math.min(dt, 0.1);
     const s = this.session || this.menuSession;
     if (s) s.frame(this.paused && this.session ? 0 : dt);
+    const playing = !!(this.session && this.session.human && !this.paused && !this.session.ended);
+    this.touch.setVisible(this.input.touchMode && playing);
+    if (this.touch.visible) this.touch.update(this.session);
     if (this.onFrame) this.onFrame(dt);
+  }
+
+  // Keeps matches smooth on weaker devices: if frames stay slow the render
+  // resolution steps down (to half at most); with headroom it steps back up. If a
+  // step down doesn't help (e.g. a phone capped at 30 fps) it is undone and the
+  // resolution is not lowered that far again for the next 30 seconds.
+  adaptResolution(dt) {
+    const a = this.adapt;
+    if (!a.on || dt <= 0 || dt > 0.5) return;
+    const active = !!(this.session && !this.paused && !document.hidden);
+    if (!active) { a.low = 0; a.high = 0; a.check = null; return; }
+    a.ema += (dt - a.ema) * 0.06;
+    a.floorT = (a.floorT || 0) + dt;
+    if (a.floor > 0.5 && a.floorT > 30) a.floor = 0.5;
+    if (a.check) {
+      a.check.t += dt;
+      if (a.check.t > 2) {
+        if (a.ema > a.check.before * 0.92) { a.floor = a.check.prev; a.floorT = 0; a.scale = a.check.prev; this.view.setResolutionScale(a.scale); }
+        a.check = null;
+      }
+      return;
+    }
+    if (a.ema > 1 / 42) { a.low += dt; a.high = 0; } else if (a.ema < 1 / 56) { a.high += dt; a.low = 0; } else { a.low = 0; a.high = 0; }
+    if (a.low > 1.5 && a.scale > a.floor + 0.01) {
+      const prev = a.scale;
+      a.scale = Math.max(a.floor, a.scale * 0.85);
+      this.view.setResolutionScale(a.scale);
+      a.check = { before: a.ema, prev, t: 0 };
+      a.low = 0;
+    } else if (a.high > 6 && a.scale < 1) {
+      a.scale = Math.min(1, a.scale * 1.12);
+      this.view.setResolutionScale(a.scale);
+      a.high = 0;
+    }
+  }
+
+  setTouchMode(on) {
+    this.input.touchMode = on;
+    document.documentElement.dataset.touch = on ? '1' : '0';
+    if (!on) this.touch.setVisible(false);
+  }
+
+  // phones: go fullscreen and landscape when play starts (best effort; many
+  // browsers and embedded views refuse, and the game works either way)
+  tryFullscreen() {
+    if (!this.input.touchMode || document.fullscreenElement || this.params.has('nofs')) return;
+    const el = document.documentElement;
+    try {
+      const r = el.requestFullscreen && el.requestFullscreen({ navigationUI: 'hide' });
+      if (r && r.then) r.then(() => { try { const o = screen.orientation && screen.orientation.lock && screen.orientation.lock('landscape'); if (o && o.catch) o.catch(() => {}); } catch (e) { /* not supported */ } }).catch(() => {});
+    } catch (e) { /* not supported */ }
   }
 
   // --------------------------------------------------------- background
@@ -199,6 +270,7 @@ class App {
     this.paused = true;
     this.session.setPaused(true);
     this.input.releaseAll();
+    this.touch.setVisible(false);
     this.input.exitLock();
     this.audio.suspend();
     this.screens.pauseMenu();
@@ -207,6 +279,8 @@ class App {
   resume() {
     if (!this.session) return;
     this.input.active = true;
+    // touch screens have no pointer lock: the on-screen controls take over
+    if (this.input.touchMode) { this.tryFullscreen(); this.unpause(); return; }
     if (this.input.dragMode || this.input.locked) { this.unpause(); return; }
     // stay paused until the browser actually grants pointer lock
     this.screens.clear();
@@ -234,6 +308,8 @@ class App {
   // ------------------------------------------------------------ settings
   applySettings() {
     const s = this.settings;
+    const wantTouch = s.touch === 'on' || (s.touch !== 'off' && (this.coarse || this.input.touchMode));
+    if (wantTouch !== this.input.touchMode) this.setTouchMode(wantTouch);
     this.input.sensitivity = s.sensitivity;
     this.input.invertY = s.invertY;
     this.audio.setVolumes({ master: s.master, sfx: s.sfx, crowd: s.crowd });

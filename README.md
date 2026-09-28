@@ -49,6 +49,24 @@ One scheme is used everywhere (tutorial text, HUD hints, menus):
 - If pointer lock is unavailable or refused, you can play with **drag-look**: hold a mouse button and drag, or use the arrow keys. All other controls are unchanged.
 - The browser context menu is suppressed during play. The game pauses and mutes when the tab loses focus.
 
+### Phones and tablets
+
+The game runs in mobile browsers with on-screen touch controls. They appear automatically on touch screens and switch off again if you use a mouse; Settings → Touch controls can force them on or off.
+
+| Touch | Action |
+| --- | --- |
+| Left thumb | Drag anywhere on the left side to move with a floating analog stick (partial push walks, pushing to the edge sprints) |
+| Right thumb | Drag anywhere on the right side to look and aim |
+| SHOOT | Hold to charge, release to strike; sliding your thumb on the button fine-tunes the aim |
+| PASS | Pass to the ringed teammate (hold briefly for more power) |
+| THRU / CALL | Through pass with the ball; call for the ball without it |
+| TACKLE / SLIDE | Replace SHOOT and PASS while an opponent has the ball (they dim while on cooldown) |
+| II | Pause |
+
+- Tap to start (there is no mouse capture on touch screens). Where the browser allows it the game goes fullscreen and locks to landscape; it is best played sideways, and a hint says so in portrait. In portrait the field-of-view setting applies to the long, vertical side and the wide projection is not used.
+- The HUD rearranges for thumbs: pause top-left, radar top-right, and in portrait the score drops below them. Menus scroll where they don't fit, turn into two columns on short landscape screens and one column on narrow ones.
+- Touch devices start on Medium quality. During matches the render resolution also adapts: if the frame rate stays below about 42 fps it steps down (to half at most), and it steps back up when there is headroom. If a step down doesn't help, as on a phone capped at 30 fps in power-saving mode, it is undone.
+
 ### Playing tips
 
 - **Receiving:** let the ball reach your feet (a ~1 m zone, up to 1.25 m on Assisted). The first touch softens the ball and places it in front of you, into the direction you are moving.
@@ -150,7 +168,7 @@ node tests/pacing.mjs         # matches needed to reach the elite tier by form
 node tests/shooting.mjs 1     # shot placement vs keeper at a given tier
 ```
 
-Browser checks (require Playwright with Chromium, `node server.js` running) write screenshots to `tests/out/`: `tests/browser.mjs` (venues and styles), `tests/flow.mjs` (create career → match → report → hub, reload persistence), `tests/ui.mjs` (menus, pause, settings), `tests/drills.mjs`, `tests/fulltime.mjs`, `tests/styleswitch.mjs` (mid-match style switch leaves the simulation identical), `tests/robust.mjs` (focus loss, corrupted save), `tests/fp.mjs`, `tests/poses.mjs`, `tests/net.mjs`, `tests/bigvenues.mjs [classic|neo]`, `tests/fov.mjs` (normal and wide field of view), `tests/possession.mjs` (possession glow in both styles), `tests/controls.mjs` (real keyboard/mouse: E tackles, W+Shift dribbling while swinging the view, FOV slider).
+Browser checks (require Playwright with Chromium, `node server.js` running) write screenshots to `tests/out/`: `tests/browser.mjs` (venues and styles), `tests/flow.mjs` (create career → match → report → hub, reload persistence), `tests/ui.mjs` (menus, pause, settings), `tests/drills.mjs`, `tests/fulltime.mjs`, `tests/styleswitch.mjs` (mid-match style switch leaves the simulation identical), `tests/robust.mjs` (focus loss, corrupted save), `tests/fp.mjs`, `tests/poses.mjs`, `tests/net.mjs`, `tests/bigvenues.mjs [classic|neo]`, `tests/fov.mjs` (normal and wide field of view), `tests/possession.mjs` (possession glow in both styles), `tests/controls.mjs` (real keyboard/mouse: E tackles, W+Shift dribbling while swinging the view, FOV slider), `tests/mobile.mjs [classic|neo]` (phone emulation with real multi-touch: menus fit, tap to play, stick, look, both thumbs at once, SHOOT/PASS/TACKLE, pause; landscape and portrait), `tests/mobile-screens.mjs` (settings, visual style and match report on phone screens).
 
 `node tests/human.mjs 4 ST 1 standard` takes the difficulty as a fifth argument and also reports the opposing team's pass completion, shots and goals.
 
@@ -162,4 +180,5 @@ Browser checks (require Playwright with Chromium, `node server.js` running) writ
 - The crowd, scoreboards and advertising are decorative; the crowd reacts to danger and goals through sound and animation only.
 - Performance was verified for draw calls and geometry budgets; very large stadiums (Premier Arena, Continental Stadium) are the heaviest scenes, and the Low quality setting reduces crowd density and resolution for weaker GPUs.
 - Audio is synthesised procedurally and is intentionally simple.
+- On phones, fullscreen and landscape lock depend on the browser: iPhone browsers and some embedded views don't allow them, so turn the phone sideways yourself. Touch controls were tested with Chromium's phone emulation and real multi-touch events rather than on physical devices, and how smoothly the game runs depends on the phone's GPU (the adaptive resolution helps; Low quality helps more).
 - The wide field-of-view projection (above 120 degrees) renders cube-map faces without multisampling; faces are rendered slightly above screen resolution to soften edges, but lines can look a little rougher than in the normal view.

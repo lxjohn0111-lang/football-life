@@ -1,7 +1,7 @@
 // DOM screens: main menu, career creation, career hub, match report, quick
 // match, training, visual style (with previews rendered by the game itself),
 // settings, how to play / credits and the pause menu.
-import { CONTROLS } from '../core/input.js';
+import { CONTROLS, TOUCH_CONTROLS } from '../core/input.js';
 import { FOV_MIN, FOV_MAX } from '../core/settings.js';
 import { CLUBS, clubById, crestSVG, tierInfo, NATIONALITIES, clubsInTier, TIERS } from '../career/clubs.js';
 import {
@@ -63,8 +63,9 @@ export class Screens {
     const c = app.store.career;
     const cont = c ? `<button class="btn big primary" data-act="cont">Continue Career<small>${esc(c.player.name)} · ${esc(clubById(c.clubId).name)} · Season ${c.seasonNo}</small></button>` : '';
     this.show(`
-      <div class="title">First<br>Touch</div>
-      <div class="subtitle">A first-person football career. You are one player on the pitch.</div>
+      <div class="menu-head"><div class="title">First<br>Touch</div>
+      <div class="subtitle">A first-person football career. You are one player on the pitch.</div></div>
+      <div class="menu-buttons">
       ${cont}
       <button class="btn big ${c ? '' : 'primary'}" data-act="new">New Career<small>Create a footballer and start at a community club</small></button>
       <button class="btn big" data-act="quick">Quick Match<small>Any two clubs, no effect on your career</small></button>
@@ -72,6 +73,7 @@ export class Screens {
       <button class="btn big" data-act="style">Visual Style<small>Classic ink or Neobrutalist</small></button>
       <button class="btn big" data-act="settings">Settings</button>
       <button class="btn big" data-act="help">How to Play / Credits</button>
+      </div>
     `, {
       cont: () => this.hub(),
       new: () => (c ? this.confirm('Start a new career? Your existing career will be overwritten.', () => this.newCareer(), () => this.mainMenu()) : this.newCareer()),
@@ -402,13 +404,14 @@ export class Screens {
     const seg = (key, opts) => `<div class="seg" data-key="${key}">${opts.map(([v, l]) => `<button class="btn ${String(s[key]) === String(v) ? 'on' : ''}" data-v="${v}">${l}</button>`).join('')}</div>`;
     const el = this.show(`<div class="panel" style="width:min(640px,96vw)"><h2>Settings</h2>
       <div class="grid2">
-        <label class="f">Mouse sensitivity <span id="v-sens">${s.sensitivity.toFixed(2)}</span><input type="range" min="0.2" max="3" step="0.05" id="s-sens" value="${s.sensitivity}"></label>
+        <label class="f">Look sensitivity <span id="v-sens">${s.sensitivity.toFixed(2)}</span><input type="range" min="0.2" max="3" step="0.05" id="s-sens" value="${s.sensitivity}"></label>
         <label class="f">Field of view <span id="v-fov">${fovLabel(s.fov)}</span><input type="range" min="${FOV_MIN}" max="${FOV_MAX}" step="1" id="s-fov" value="${s.fov}"></label>
         <label class="f">Master volume<input type="range" min="0" max="1" step="0.05" id="s-master" value="${s.master}"></label>
         <label class="f">Effects volume<input type="range" min="0" max="1" step="0.05" id="s-sfx" value="${s.sfx}"></label>
         <label class="f">Crowd volume<input type="range" min="0" max="1" step="0.05" id="s-crowd" value="${s.crowd}"></label>
       </div>
       <h3>Controls</h3>${seg('invertY', [[false, 'Normal Y'], [true, 'Invert Y']])}
+      <div style="height:6px"></div>${seg('touch', [['auto', 'Touch controls: auto'], ['on', 'Touch controls on'], ['off', 'Touch controls off']])}
       <h3>Difficulty</h3>${seg('difficulty', Object.entries(DIFFICULTY).map(([k, d]) => [k, d.label]))}
       <div class="small muted">Assisted (default): the ball sticks to your feet, passes find teammates and are chipped over blocked lanes, and opponents are slower and make more mistakes. Expert keeps only light assistance.</div>
       <h3>Camera</h3>${seg('bob', [[true, 'View bob on'], [false, 'View bob off']])} <div style="height:6px"></div>${seg('shake', [[true, 'Camera shake on'], [false, 'Camera shake off']])}
@@ -436,8 +439,11 @@ export class Screens {
   howTo(fromPause = false) {
     this.current = fromPause ? 'pauseSub' : 'help';
     const rows = CONTROLS.map(([k, d]) => `<tr><td><b>${k}</b></td><td>${d}</td></tr>`).join('');
-    this.show(`<div class="panel" style="width:min(860px,96vw);max-height:92vh;overflow:auto"><h2>How to Play</h2>
-      <table class="t">${rows}</table>
+    const trows = TOUCH_CONTROLS.map(([k, d]) => `<tr><td><b>${k}</b></td><td>${d}</td></tr>`).join('');
+    const touchFirst = this.app.input.touchMode;
+    const kb = `<h3>Keyboard and mouse</h3><table class="t">${rows}</table>`, tc = `<h3>Touch screen</h3><table class="t">${trows}</table>`;
+    this.show(`<div class="panel" style="width:min(860px,96vw)"><h2>How to Play</h2>
+      ${touchFirst ? tc + kb : kb + tc}
       <h3>Playing</h3>
       <p class="small">You control one footballer and see the match through their eyes. Your teammates and opponents are AI. Receive the ball with a soft first touch by simply letting it reach your feet (move to push the touch into space). Press pass just before the ball arrives for a first-time pass; hold shoot while the ball arrives for a first-time finish. The ring shows who your pass will go to - look towards a teammate to choose them. While you have the ball the screen edge glows green; your close control keeps it at your feet, so opponents have to tackle you for it. Press E near a dribbler to lunge in with a tackle. Press Space without the ball to call for it: a teammate acknowledges and passes when you are open. Settings has the difficulty (how much help you get and how sharp the opponents are) and a field of view from 60 to 200 degrees.</p>
       <h3>Rules</h3>
@@ -506,6 +512,13 @@ export class Screens {
     const first = !this.seenControls;
     this.seenControls = true;
     const title = sess && sess.cfg.title ? `<h2>${esc(sess.cfg.title)}</h2>` : '';
+    if (this.app.input.touchMode) {
+      const trows = TOUCH_CONTROLS.map(([k, d]) => `<tr><td><b>${k}</b></td><td>${d}</td></tr>`).join('');
+      this.show(`<div class="panel tap-panel" style="text-align:center;max-width:620px">${title}<div class="lockmsg">Tap to play</div>
+        ${first ? `<table class="t small" style="margin-top:10px;text-align:left">${trows}</table><div class="small muted" style="margin-top:8px">Best played with the phone sideways.</div>` : '<div class="small muted">Left thumb move · right thumb look · SHOOT / PASS / THRU · TACKLE / SLIDE · II pause</div>'}</div>`, {}, 'screen center dim');
+      this.root.firstChild.addEventListener('click', () => { this.app.resume(); }, { once: true });
+      return;
+    }
     const rows = CONTROLS.map(([k, d]) => `<tr><td><b>${k}</b></td><td>${d}</td></tr>`).join('');
     const tips = `<div class="small" style="margin-top:8px;text-align:left">Let passes reach your feet for a soft first touch. Look at a teammate to select them (ring), then right-click. Press pass or hold shoot just before the ball arrives to play it first time.</div>`;
     this.show(`<div class="panel" style="text-align:center;max-width:620px">${title}<div class="lockmsg">Click to play</div>

@@ -127,13 +127,21 @@ export class SceneView {
   setQuality(q) {
     this.quality = q;
     const dpr = window.devicePixelRatio || 1;
-    this.renderer.setPixelRatio(q === 'low' ? Math.min(1, dpr) * 0.75 : q === 'medium' ? Math.min(1.25, dpr) : Math.min(2, dpr));
-    const size = q === 'low' ? 1024 : 2048;
+    const base = q === 'low' ? Math.min(1, dpr) * 0.75 : q === 'medium' ? Math.min(1.25, dpr) : Math.min(2, dpr);
+    this.renderer.setPixelRatio(base * (this.resScale || 1));
+    const size = q === 'high' ? 2048 : 1024;
     if (this.sun.shadow.mapSize.x !== size) {
       this.sun.shadow.mapSize.set(size, size);
       if (this.sun.shadow.map) { this.sun.shadow.map.dispose(); this.sun.shadow.map = null; }
     }
     this.resize();
+  }
+
+  // adaptive performance: scales the render resolution below the quality's own
+  setResolutionScale(k) {
+    if (Math.abs(k - (this.resScale || 1)) < 0.01) return;
+    this.resScale = k;
+    this.setQuality(this.quality);
   }
 
   resize() {
@@ -403,9 +411,17 @@ export class SceneView {
     if (cam.fov) {
       // the FOV setting is horizontal (as in most first-person games); three.js wants
       // vertical. Beyond RECTILINEAR_MAX_FOV the wide cube-map projection takes over.
-      this.hfov = cam.mode === 'fp' ? cam.fov : Math.min(cam.fov, RECTILINEAR_MAX_FOV);
-      const h = Math.min(this.hfov, RECTILINEAR_MAX_FOV);
-      const v = THREE.MathUtils.clamp(2 * Math.atan(Math.tan((h * Math.PI) / 360) / c.aspect) * 180 / Math.PI, 35, 110);
+      let v;
+      if (c.aspect < 1) {
+        // portrait screens (phones held upright): the setting applies to the long,
+        // vertical side and only the ordinary projection is used
+        this.hfov = Math.min(cam.fov, RECTILINEAR_MAX_FOV);
+        v = THREE.MathUtils.clamp(Math.min(cam.fov, 110), 35, 110);
+      } else {
+        this.hfov = cam.mode === 'fp' ? cam.fov : Math.min(cam.fov, RECTILINEAR_MAX_FOV);
+        const h = Math.min(this.hfov, RECTILINEAR_MAX_FOV);
+        v = THREE.MathUtils.clamp(2 * Math.atan(Math.tan((h * Math.PI) / 360) / c.aspect) * 180 / Math.PI, 35, 110);
+      }
       if (Math.abs(v - c.fov) > 0.01) { c.fov = v; c.updateProjectionMatrix(); }
     } else {
       this.hfov = Math.min(this.hfov, RECTILINEAR_MAX_FOV);

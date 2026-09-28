@@ -2,6 +2,8 @@
 // and a click-and-drag / arrow-key look fallback when pointer lock is refused.
 // One control scheme everywhere: WASD move, mouse look, Shift sprint,
 // LMB shoot, RMB pass, Space through pass / request, E tackle, C slide, Esc pause.
+// On touch screens the on-screen controls (ui/touch.js) feed the same actions:
+// an analog stick for movement, drags for look, and buttons for the actions.
 
 export const CONTROLS = [
   ['W A S D', 'Move (relative to where you look)'],
@@ -13,6 +15,16 @@ export const CONTROLS = [
   ['E', 'Standing tackle (lunges at the ball when it is close)'],
   ['C', 'Slide tackle'],
   ['Esc', 'Pause'],
+];
+
+export const TOUCH_CONTROLS = [
+  ['Left thumb', 'Drag anywhere on the left side to move; push to the edge of the stick to sprint'],
+  ['Right thumb', 'Drag anywhere on the right side to look and aim'],
+  ['SHOOT', 'Hold to charge, release to strike (slide your thumb on it to fine-tune the aim)'],
+  ['PASS', 'Pass to the ringed teammate (hold briefly for more power)'],
+  ['THRU / CALL', 'Through pass with the ball; call for the ball without it'],
+  ['TACKLE / SLIDE', 'Replace SHOOT and PASS while an opponent has the ball'],
+  ['II', 'Pause'],
 ];
 
 export class Input {
@@ -32,6 +44,10 @@ export class Input {
     this.sensitivity = 1;
     this.invertY = false;
     this.lastLockExit = 0;
+    // touch: analog stick state from the on-screen controls
+    this.touchMode = false;
+    this.touch = { active: false, f: 0, r: 0, sprint: false };
+    this.lastTouchAt = -1e9;
 
     this.handlers = {
       keydown: (e) => this.keydown(e),
@@ -43,7 +59,10 @@ export class Input {
       plc: () => this.lockChange(),
       ple: () => { this.locked = false; if (this.onLockError) this.onLockError(); },
       blur: () => { this.keys.clear(); this.releaseAll(); },
+      touchSeen: (e) => { if (e.pointerType === 'touch' || e.pointerType === 'pen') this.lastTouchAt = performance.now(); },
     };
+    window.addEventListener('pointerdown', this.handlers.touchSeen, true);
+    window.addEventListener('pointerup', this.handlers.touchSeen, true);
     window.addEventListener('keydown', this.handlers.keydown);
     window.addEventListener('keyup', this.handlers.keyup);
     window.addEventListener('mousemove', this.handlers.mousemove);
@@ -87,7 +106,24 @@ export class Input {
     if (this.buttons & 1) this.emit('shoot', false);
     if (this.buttons & 2) this.emit('pass', false);
     this.buttons = 0;
+    this.touch.active = false; this.touch.f = 0; this.touch.r = 0; this.touch.sprint = false;
+    if (this.onReleaseAll) this.onReleaseAll();
   }
+
+  // browsers follow a tap with emulated mouse events; those must not shoot or pass
+  fromTouch(e) {
+    return (e.sourceCapabilities && e.sourceCapabilities.firesTouchEvents) || performance.now() - this.lastTouchAt < 900;
+  }
+
+  // on-screen buttons: same actions as the mouse buttons and keys
+  touchAction(type, down) {
+    if (!this.active) return;
+    if (type === 'shoot') { if (down) this.buttons |= 1; else this.buttons &= ~1; }
+    if (type === 'pass') { if (down) this.buttons |= 2; else this.buttons &= ~2; }
+    if (!down && (type === 'tackle' || type === 'slide')) return;
+    this.emit(type, down);
+  }
+  touchLook(dx, dy) { if (this.active) { this.lookX += dx; this.lookY += dy; } }
 
   keydown(e) {
     const k = e.code;
@@ -107,18 +143,19 @@ export class Input {
   }
 
   mousedown(e) {
-    if (!this.active) return;
+    if (!this.active || this.fromTouch(e)) return;
     if (!this.locked && !this.dragMode) return;
     if (e.target !== this.el && !this.locked) return;
     if (e.button === 0) { this.buttons |= 1; this.emit('shoot', true); }
     if (e.button === 2) { this.buttons |= 2; this.emit('pass', true); e.preventDefault(); }
   }
   mouseup(e) {
+    if (this.fromTouch(e)) return;
     if (e.button === 0 && this.buttons & 1) { this.buttons &= ~1; this.emit('shoot', false); }
     if (e.button === 2 && this.buttons & 2) { this.buttons &= ~2; this.emit('pass', false); }
   }
   mousemove(e) {
-    if (!this.active) return;
+    if (!this.active || this.fromTouch(e)) return;
     if (this.locked || (this.dragMode && (e.buttons & 7))) {
       this.lookX += e.movementX || 0;
       this.lookY += e.movementY || 0;
@@ -128,9 +165,16 @@ export class Input {
   // camera-relative movement axes
   axes() {
     const k = this.keys;
-    const f = (k.has('KeyW') ? 1 : 0) - (k.has('KeyS') ? 1 : 0);
-    const r = (k.has('KeyD') ? 1 : 0) - (k.has('KeyA') ? 1 : 0);
-    return { f, r, sprint: k.has('ShiftLeft') || k.has('ShiftRight') };
+    let f = (k.has('KeyW') ? 1 : 0) - (k.has('KeyS') ? 1 : 0);
+    let r = (k.has('KeyD') ? 1 : 0) - (k.has('KeyA') ? 1 : 0);
+    let sprint = k.has('ShiftLeft') || k.has('ShiftRight');
+    const t = this.touch;
+    if (t.active) {
+      // analog stick: partial deflection walks, full deflection sprints
+      f = Math.max(-1, Math.min(1, f + t.f)); r = Math.max(-1, Math.min(1, r + t.r));
+      sprint = sprint || t.sprint;
+    }
+    return { f, r, sprint };
   }
 
   // apply accumulated look to yaw/pitch
