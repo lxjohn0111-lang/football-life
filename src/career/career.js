@@ -25,9 +25,9 @@ export function startingAttrs(role) {
 export const TIER_REQ = {
   1: { avg: 5.8, rep: 0, apps: 0 },
   2: { avg: 6.6, rep: 10, apps: 3 },
-  3: { avg: 6.9, rep: 26, apps: 3 },
-  4: { avg: 7.1, rep: 44, apps: 3 },
-  5: { avg: 7.3, rep: 62, apps: 3 },
+  3: { avg: 6.9, rep: 28, apps: 5 },
+  4: { avg: 7.1, rep: 48, apps: 5 },
+  5: { avg: 7.3, rep: 68, apps: 5 },
 };
 const WAGE = [0, 160, 650, 2600, 11000, 42000];
 

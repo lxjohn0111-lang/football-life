@@ -27,6 +27,7 @@ export class Ball {
   }
 
   place(x, z, y = R) {
+    this.net[0] = this.net[1] = null;
     this.pos.set(x, y, z);
     this.prevPos.copy(this.pos);
     this.vel.set(0, 0, 0);
@@ -198,10 +199,10 @@ function netSoft(ball, nx, ny, nz, pen, h, gi) {
     const excess = pen - NET_MAX;
     ball.pos.x += nx * excess; ball.pos.y += ny * excess; ball.pos.z += nz * excess;
   }
-  const n = ball.net[gi];
-  if (!n || pen > n.depth) {
-    ball.net[gi] = { x: ball.pos.x, y: ball.pos.y, z: ball.pos.z, depth: Math.min(pen, NET_MAX), nx, ny, nz, fresh: true };
-  }
+  // contact record for the renderer: a counter plus the deepest point since it last looked
+  const n = ball.net[gi] || (ball.net[gi] = { x: 0, y: 0, z: 0, depth: 0, nx, ny, nz, count: 0 });
+  n.count++;
+  if (pen >= n.depth) { n.x = ball.pos.x; n.y = ball.pos.y; n.z = ball.pos.z; n.depth = Math.min(pen, NET_MAX); n.nx = nx; n.ny = ny; n.nz = nz; }
   ball.version++;
 }
 
@@ -287,8 +288,6 @@ function trackCrossing(ball, prevX) {
 export function stepBall(ball, dt, hooks) {
   ball.prevPos.copy(ball.pos);
   ball.prevQ[0] = ball.q[0]; ball.prevQ[1] = ball.q[1]; ball.prevQ[2] = ball.q[2]; ball.prevQ[3] = ball.q[3];
-  if (ball.net[0]) ball.net[0].fresh = false;
-  if (ball.net[1]) ball.net[1].fresh = false;
   if (ball.state === 'held' || ball.state === 'dead') {
     integrateRotation(ball, dt);
     return;

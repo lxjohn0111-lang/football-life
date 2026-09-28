@@ -66,7 +66,7 @@ export class SceneView {
     this.nets = new THREE.Mesh(buildNets(), this.netMat);
     this.nets.frustumCulled = false;
     this.scene.add(this.nets);
-    this.netState = [{ amp: 0, t: 9, x: 0, y: 0, z: 0, dx: 1, dy: 0, dz: 0 }, { amp: 0, t: 9, x: 0, y: 0, z: 0, dx: -1, dy: 0, dz: 0 }];
+    this.netState = [{ amp: 0, t: 9, x: 0, y: 0, z: 0, dx: 1, dy: 0, dz: 0, count: 0 }, { amp: 0, t: 9, x: 0, y: 0, z: 0, dx: -1, dy: 0, dz: 0, count: 0 }];
 
     this.blobs = new BlobShadows(24);
     this.markers = new Markers();
@@ -241,13 +241,15 @@ export class SceneView {
     for (let gi = 0; gi < 2; gi++) {
       const st = this.netState[gi];
       const c = b.net[gi];
-      if (c && c.fresh) {
-        st.amp = Math.max(st.amp * 0.9, c.depth * 1.25 + 0.04);
+      if (c && c.count !== st.count) {
+        // the ball is pushing into the net: bulge around the contact point
+        st.count = c.count;
+        st.amp = Math.max(st.amp * 0.9, Math.min(0.6, 0.12 + c.depth * 2));
         st.x = c.x; st.y = c.y; st.z = c.z;
         st.dx = -c.nx; st.dy = -c.ny; st.dz = -c.nz;
         st.t = 0;
         st.contact = true;
-        b.net[gi] = null;
+        c.depth = 0;
       } else {
         st.t += dt;
         st.contact = false;

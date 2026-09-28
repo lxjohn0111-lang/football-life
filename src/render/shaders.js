@@ -48,8 +48,8 @@ uniform vec4 uNetA; uniform vec3 uNetDA;
 uniform vec4 uNetB; uniform vec3 uNetDB;
 vec3 netDisp(vec3 p) {
   vec3 da = p - uNetA.xyz; vec3 db = p - uNetB.xyz;
-  float fa = uNetA.w * exp(-dot(da, da) / 0.35);
-  float fb = uNetB.w * exp(-dot(db, db) / 0.35);
+  float fa = uNetA.w * exp(-dot(da, da) / 0.5);
+  float fb = uNetB.w * exp(-dot(db, db) / 0.5);
   return uNetDA * fa + uNetDB * fb;
 }
 `;
