@@ -172,8 +172,9 @@ export class Screens {
         <div class="muted small">${venue}</div>
         <div class="row" style="margin-top:12px"><button class="btn huge primary" data-act="play">Play Match</button></div>`;
     } else if (canStartNewSeason(c)) {
+      const cup = s.final && s.final.played ? `<p>${s.final.won ? '🏆 <b>Continental Cup winners!</b>' : `Continental Cup Final: lost ${s.final.score ? s.final.score.join('-') : ''}.`}</p>` : '';
       next = `<div class="next-fixture">Season ${c.seasonNo} complete</div>
-        <p>${esc(club.name)} finished <b>${ordinal(s.placement)}</b> in the ${esc(s.league)}.</p>
+        <p>${esc(club.name)} finished <b>${ordinal(s.placement)}</b> in the ${esc(s.league)}.${s.placement === 1 ? ' 🏆 <b>Champions!</b>' : ''}</p>${cup}
         <button class="btn huge primary" data-act="season">Start Season ${c.seasonNo + 1}</button>`;
     }
     const table = sortedTable(s).map((t, i) => `<tr class="${t.id === c.clubId ? 'me' : ''}"><td>${i + 1}</td><td>${crestSVG(clubById(t.id), 18)} ${esc(clubById(t.id).name)}</td><td class="n">${t.p}</td><td class="n">${t.w}</td><td class="n">${t.d}</td><td class="n">${t.l}</td><td class="n">${t.gf - t.ga}</td><td class="n"><b>${t.pts}</b></td></tr>`).join('');
@@ -500,7 +501,14 @@ export class Screens {
   // one click starts play (pointer lock needs a user gesture)
   clickToPlay() {
     this.current = 'click';
-    this.show(`<div class="panel" style="text-align:center"><div class="lockmsg">Click to play</div><div class="small muted">Mouse look · WASD move · LMB shoot · RMB pass · Esc pause</div></div>`, {}, 'screen center');
+    const sess = this.app.session;
+    const first = !this.seenControls;
+    this.seenControls = true;
+    const title = sess && sess.cfg.title ? `<h2>${esc(sess.cfg.title)}</h2>` : '';
+    const rows = CONTROLS.map(([k, d]) => `<tr><td><b>${k}</b></td><td>${d}</td></tr>`).join('');
+    const tips = `<div class="small" style="margin-top:8px;text-align:left">Let passes reach your feet for a soft first touch. Look at a teammate to select them (ring), then right-click. Press pass or hold shoot just before the ball arrives to play it first time.</div>`;
+    this.show(`<div class="panel" style="text-align:center;max-width:620px">${title}<div class="lockmsg">Click to play</div>
+      ${first ? `<table class="t small" style="margin-top:10px;text-align:left">${rows}</table>${tips}` : '<div class="small muted">Mouse look · WASD move · Shift sprint · LMB shoot · RMB pass · Space through / call · E tackle · C slide · Esc pause</div>'}</div>`, {}, 'screen center dim');
     const scr = this.root.firstChild;
     scr.addEventListener('click', () => { this.app.resume(); }, { once: true });
   }

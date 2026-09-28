@@ -154,7 +154,8 @@ class App {
     const human = { ...(career ? career.player : defaultPlayer()) };
     if (o.role) human.role = o.role;
     const side = o.side || 0;
-    const c = this.matchConfig({ homeClub: home, awayClub: away, human, humanSide: side, seed: (Date.now() & 0xffff) + 1, halfLength: o.halfLength });
+    const seed = this.params.get('seed') ? Number(this.params.get('seed')) : (Date.now() & 0xffff) + 1;
+    const c = this.matchConfig({ homeClub: home, awayClub: away, human, humanSide: side, seed, halfLength: o.halfLength });
     // every tier plays at the home club's stadium
     const venue = o.venue || tierInfo(home.tier).venue;
     return this.startSession({
@@ -181,6 +182,8 @@ class App {
     const matchId = prep.id;
     return this.startSession({
       mode: 'career', venue, venueOpts: { homeName: home.name, final: !!fx.final },
+      final: fx.final ? fx.name : null,
+      title: fx.final ? `${fx.name}: ${home.name} v ${away.name}` : `${tierInfo(home.tier).league} · Round ${fx.round}: ${home.name} v ${away.name}`,
       colours: { kits: cfg.kits, human: human.look }, match: cfg.match,
       onEnd: (s) => this.screens.report(s, { career: true, matchId, fx, title: fx.final ? 'Continental Cup Final' : `Round ${fx.round} report` }),
     });

@@ -72,7 +72,7 @@ export class MatchSession {
       else a.play('pass', { ...sp, gain: sp.gain * Math.min(1, 0.4 + e.speed / 30), rate: 0.95 + Math.random() * 0.1 });
       if (e.restart === 'kickoff') a.play('whistle', { gain: menu ? 0 : 0.8 });
     });
-    on('touch', (e) => { if (e.kind !== 'receive' || true) a.play('touch', { ...spatial(e.player.pos, 0.6), rate: 0.9 + Math.random() * 0.2 }); });
+    on('touch', (e) => a.play('touch', { ...spatial(e.player.pos, e.kind === 'receive' ? 0.8 : 0.55), rate: 0.9 + Math.random() * 0.2 }));
     on('deflect', (e) => a.play('bounce', spatial(e.player.pos, Math.min(1, e.speed / 10))));
     on('bounce', (e) => { if (e.speed > 2) a.play('bounce', spatial(m.ball.pos, Math.min(0.6, e.speed / 16))); });
     on('frame', (e) => { a.play('post', spatial(m.ball.pos, Math.min(1, e.speed / 18))); a.play('groan', { group: 'crowd', gain: menu ? 0 : 0.7 }); this.excite = 1; });
@@ -81,7 +81,19 @@ export class MatchSession {
     on('slide', (e) => a.play('slide', spatial(e.player.pos, 0.8)));
     on('foul', (e) => { a.play('whistle', { gain: menu ? 0 : 0.9 }); if (e.victim === this.human || e.player === this.human) this.hud.notify(e.player === this.human ? 'FOUL' : 'FOULED', 'bad'); if (e.penalty && !menu) this.hud.showBanner('PENALTY', '', 1800); });
     on('halftime', () => { a.play('whistleLong', { gain: menu ? 0 : 0.9 }); if (!menu) this.hud.showBanner('HALF TIME', `${m.teams[0].short} ${m.scoreline[0]} - ${m.scoreline[1]} ${m.teams[1].short}`, 3000); });
-    on('fulltime', () => { a.play('whistleLong', { gain: menu ? 0 : 0.9 }); if (!menu) this.hud.showBanner('FULL TIME', `${m.teams[0].short} ${m.scoreline[0]} - ${m.scoreline[1]} ${m.teams[1].short}`, 4000); });
+    on('fulltime', () => {
+      a.play('whistleLong', { gain: menu ? 0 : 0.9 });
+      if (menu) return;
+      const [x, y] = m.scoreline;
+      const won = this.human && (this.human.team === 0 ? x > y : y > x);
+      if (this.cfg.final && won) {
+        // trophy presentation for the Continental Cup final
+        this.hud.showBanner('CHAMPIONS', `${this.cfg.final} winners!`, 6000, 'mine');
+        a.play('cheer', { group: 'crowd', gain: 1 });
+        v.crowdLevel = 1;
+        for (let i = 0; i < 3; i++) setTimeout(() => v.celebrate((Math.random() - 0.5) * 30, (Math.random() - 0.5) * 20, this.human.team, 1.4), i * 500);
+      } else this.hud.showBanner('FULL TIME', `${m.teams[0].short} ${x} - ${y} ${m.teams[1].short}`, 4000);
+    });
     on('snap', () => { if (!menu) this.hud.flashFade(); });
     on('humanYaw', (e) => { this.cam.yaw = e.yaw; this.cam.pitch = -0.14; });
     on('request', () => a.play('shout', { gain: 0.5 }));
