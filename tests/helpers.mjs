@@ -11,7 +11,8 @@ export function makeTeam(name, tier, style, opts = {}) {
     keeping: base, foot: 'R',
   }));
   if (opts.human) {
-    const idx = players.findIndex((p) => p.role === opts.human.role);
+    let idx = players.findIndex((p) => p.role === opts.human.role);
+    if (idx < 0) idx = players.findIndex((p) => p.role === 'CM');
     players[idx] = { ...players[idx], ...opts.human, isHuman: true, name: 'Hero' };
   }
   return { name, short: name.slice(0, 3).toUpperCase(), tier, style, players, kit: {} };
