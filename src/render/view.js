@@ -13,6 +13,36 @@ import { BALL_R, PITCH } from '../sim/constants.js';
 
 THREE.ColorManagement.enabled = false;
 
+// Horizontal field of view (degrees) up to which a normal perspective camera is
+// used. Wider views render a cube map around the eye and remap it to the screen
+// with a general perspective projection r = (d+1)·sinθ / (d+cosθ): d = 0 is the
+// ordinary rectilinear view (so the switch is seamless), d = 1 is stereographic,
+// which can show 200 degrees and more without extreme stretching.
+export const RECTILINEAR_MAX_FOV = 120;
+const WIDE_FULL_AT = 175;
+
+function wideParams(hfov) {
+  const d = THREE.MathUtils.clamp((hfov - RECTILINEAR_MAX_FOV) / (WIDE_FULL_AT - RECTILINEAR_MAX_FOV), 0, 1);
+  const half = (hfov * Math.PI) / 360;
+  return { d, R: ((d + 1) * Math.sin(half)) / (d + Math.cos(half)) };
+}
+
+const WIDE_VERT = `varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }`;
+const WIDE_FRAG = `
+uniform samplerCube tCube;
+uniform mat3 uRot;
+uniform float uD, uR, uAspect;
+varying vec2 vUv;
+void main() {
+  vec2 sc = (vUv * 2.0 - 1.0) * vec2(uR, uR / uAspect);
+  float r = length(sc);
+  float k = uD + 1.0;
+  float th = atan(r, k) + asin(clamp(r * uD / sqrt(k * k + r * r), -1.0, 1.0));
+  vec2 u = r > 1e-6 ? sc / r : vec2(0.0);
+  vec3 dir = uRot * vec3(u * sin(th), -cos(th));
+  gl_FragColor = textureCube(tCube, dir);
+}`;
+
 export class SceneView {
   constructor(canvas, opts = {}) {
     this.canvas = canvas;
@@ -89,6 +119,8 @@ export class SceneView {
     this.localPlayer = null;
     this.firstPerson = true;
     this.hideHead = true;
+    this.hfov = 100;
+    this.wide = null;
     this.resize();
   }
 
@@ -222,7 +254,10 @@ export class SceneView {
         const mats = an.update(ctx);
         const base = i * PER;
         for (let k = 0; k < PER; k++) this.batch.setMatrix(base + k, mats[k]);
-        if (ctx.local && this.hideHead) { this.batch.hide(base + P.HEAD); this.batch.hide(base + P.TORSO); }
+        if (ctx.local && this.hideHead) {
+          this.batch.hide(base + P.HEAD); this.batch.hide(base + P.TORSO);
+          if (this.isWide()) for (const k of [P.UARM_L, P.UARM_R, P.FARM_L, P.FARM_R]) this.batch.hide(base + k);
+        }
         if (this.blobShowPlayers) this.blobs.add(an.root.x, an.root.z, 0.95, 0.2);
       }
       const h = Math.max(0, this.ballPos.y - BALL_R);
@@ -234,7 +269,106 @@ export class SceneView {
     }
     this.burst.update(dt);
     this.updateCamera(cam, dt, alpha);
-    this.renderer.render(this.scene, this.camera);
+    if (this.isWide()) this.renderWide();
+    else this.renderer.render(this.scene, this.camera);
+  }
+
+  // ------------------------------------------------------------- wide FOV
+  isWide() { return this.hfov > RECTILINEAR_MAX_FOV + 0.01; }
+
+  ensureWide(size) {
+    let w = this.wide;
+    if (!w) {
+      const mat = new THREE.ShaderMaterial({
+        uniforms: { tCube: { value: null }, uRot: { value: new THREE.Matrix3() }, uD: { value: 0 }, uR: { value: 1 }, uAspect: { value: 1 } },
+        vertexShader: WIDE_VERT, fragmentShader: WIDE_FRAG, depthTest: false, depthWrite: false,
+      });
+      const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), mat);
+      quad.frustumCulled = false;
+      const scene = new THREE.Scene();
+      scene.add(quad);
+      w = this.wide = { mat, scene, cam: new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1), rt: null, cube: null, size: 0, fwd: new THREE.Vector3(), dir: new THREE.Vector3() };
+    }
+    if (!w.rt || Math.abs(size - w.size) / w.size > 0.15) {
+      if (w.rt) w.rt.dispose();
+      w.rt = new THREE.WebGLCubeRenderTarget(size, { generateMipmaps: false, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter });
+      w.cube = new THREE.CubeCamera(this.camera.near, this.camera.far, w.rt);
+      w.size = size;
+      w.mat.uniforms.tCube.value = w.rt.texture;
+    }
+    return w;
+  }
+
+  renderWide() {
+    const r = this.renderer, c = this.camera;
+    const { d, R } = wideParams(this.hfov);
+    const buf = r.getDrawingBufferSize(this._buf || (this._buf = new THREE.Vector2()));
+    const aspect = buf.x / buf.y;
+    // face resolution: a little over one face texel per screen pixel at the centre of
+    // the view (cube faces can't be multisampled, so this doubles as anti-aliasing)
+    const ppr = buf.x / 2 / R;
+    const cap = this.quality === 'low' ? 1024 : this.quality === 'medium' ? 1536 : 2048;
+    const ss = this.quality === 'low' ? 1 : 1.35;
+    const size = THREE.MathUtils.clamp(Math.round((2 * ppr * ss) / 64) * 64, 512, cap);
+    const w = this.ensureWide(size);
+    const cube = w.cube;
+    if (cube.coordinateSystem !== r.coordinateSystem) { cube.coordinateSystem = r.coordinateSystem; cube.updateCoordinateSystem(); }
+    c.updateMatrixWorld();
+    cube.position.copy(c.position);
+    cube.updateMatrixWorld();
+    // lines keep their on-screen width: scale from screen pixels to face texels
+    const res = SU.uResolution.value, oldW = res.x, oldH = res.y, lw = SU.uLineWidth.value, mw = SU.uMinWidth.value;
+    const k = w.size / 2 / ppr;
+    res.set(w.size, w.size);
+    SU.uLineWidth.value = lw * k; SU.uMinWidth.value = mw * k;
+    // only faces that can appear in the view are rendered; shadows update once
+    c.getWorldDirection(w.fwd);
+    const corner = R * Math.sqrt(1 + 1 / (aspect * aspect));
+    const kk = d + 1;
+    const thetaMax = Math.atan2(corner, kk) + Math.asin(Math.min(1, (corner * d) / Math.sqrt(kk * kk + corner * corner)));
+    const limit = Math.cos(Math.min(Math.PI, thetaMax + 0.96));
+    const auto = r.shadowMap.autoUpdate;
+    if (auto) { r.shadowMap.autoUpdate = false; r.shadowMap.needsUpdate = true; }
+    const prevTarget = r.getRenderTarget();
+    let calls = 0;
+    for (let i = 0; i < 6; i++) {
+      const fc = cube.children[i];
+      fc.getWorldDirection(w.dir);
+      if (w.dir.dot(w.fwd) < limit) continue;
+      r.setRenderTarget(w.rt, i);
+      r.render(this.scene, fc);
+      calls += r.info.render.calls;
+    }
+    r.shadowMap.autoUpdate = auto;
+    r.setRenderTarget(prevTarget);
+    res.set(oldW, oldH);
+    SU.uLineWidth.value = lw; SU.uMinWidth.value = mw;
+    const u = w.mat.uniforms;
+    u.uRot.value.setFromMatrix4(c.matrixWorld);
+    u.uD.value = d; u.uR.value = R; u.uAspect.value = aspect;
+    r.render(w.scene, w.cam);
+    this.wideCalls = calls + 1;
+  }
+
+  // Screen position (NDC, -1..1) of a world point under the current projection;
+  // off-screen or behind points come back with |x| or |y| > 1 in their direction.
+  projectToScreen(pos, out) {
+    const c = this.camera;
+    if (!this.isWide()) {
+      out.copy(pos).project(c);
+      if (out.z > 1) { out.x = -out.x * 50; out.y = -out.y * 50; }
+      return out;
+    }
+    const { d, R } = wideParams(this.hfov);
+    out.copy(pos).applyMatrix4(c.matrixWorldInverse);
+    const len = out.length() || 1;
+    const cosT = -out.z / len;
+    const pl = Math.hypot(out.x, out.y) || 1e-6;
+    const ux = out.x / pl, uy = out.y / pl;
+    const den = d + cosT;
+    const rr = den > 1e-4 ? ((d + 1) * Math.sqrt(Math.max(0, 1 - cosT * cosT))) / den : 1e4;
+    out.set((ux * rr) / R, (uy * rr * c.aspect) / R, 0);
+    return out;
   }
 
   updateNets(dt) {
@@ -267,9 +401,14 @@ export class SceneView {
   updateCamera(cam, dt, alpha) {
     const c = this.camera;
     if (cam.fov) {
-      // the FOV setting is horizontal (as in most first-person games); three.js wants vertical
-      const v = THREE.MathUtils.clamp(2 * Math.atan(Math.tan((cam.fov * Math.PI) / 360) / c.aspect) * 180 / Math.PI, 35, 95);
+      // the FOV setting is horizontal (as in most first-person games); three.js wants
+      // vertical. Beyond RECTILINEAR_MAX_FOV the wide cube-map projection takes over.
+      this.hfov = cam.mode === 'fp' ? cam.fov : Math.min(cam.fov, RECTILINEAR_MAX_FOV);
+      const h = Math.min(this.hfov, RECTILINEAR_MAX_FOV);
+      const v = THREE.MathUtils.clamp(2 * Math.atan(Math.tan((h * Math.PI) / 360) / c.aspect) * 180 / Math.PI, 35, 110);
       if (Math.abs(v - c.fov) > 0.01) { c.fov = v; c.updateProjectionMatrix(); }
+    } else {
+      this.hfov = Math.min(this.hfov, RECTILINEAR_MAX_FOV);
     }
     if (cam.mode === 'fp' && this.localPlayer && this.match) {
       const p = this.localPlayer;
@@ -347,6 +486,6 @@ export class SceneView {
 
   stats() {
     const i = this.renderer.info;
-    return { calls: i.render.calls, tris: i.render.triangles, people: this.venue ? this.venue.people : 0 };
+    return { calls: this.isWide() ? this.wideCalls : i.render.calls, tris: i.render.triangles, people: this.venue ? this.venue.people : 0, wide: this.isWide() };
   }
 }

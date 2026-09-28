@@ -2,6 +2,7 @@
 // match, training, visual style (with previews rendered by the game itself),
 // settings, how to play / credits and the pause menu.
 import { CONTROLS } from '../core/input.js';
+import { FOV_MIN, FOV_MAX } from '../core/settings.js';
 import { CLUBS, clubById, crestSVG, tierInfo, NATIONALITIES, clubsInTier, TIERS } from '../career/clubs.js';
 import {
   createCareer, nextFixture, sortedTable, ATTRS, ATTR_LABELS, posName, upgradeAttr, attrStep, interestList,
@@ -402,21 +403,21 @@ export class Screens {
     const el = this.show(`<div class="panel" style="width:min(640px,96vw)"><h2>Settings</h2>
       <div class="grid2">
         <label class="f">Mouse sensitivity <span id="v-sens">${s.sensitivity.toFixed(2)}</span><input type="range" min="0.2" max="3" step="0.05" id="s-sens" value="${s.sensitivity}"></label>
-        <label class="f">Field of view <span id="v-fov">${s.fov}</span><input type="range" min="65" max="110" step="1" id="s-fov" value="${s.fov}"></label>
+        <label class="f">Field of view <span id="v-fov">${fovLabel(s.fov)}</span><input type="range" min="${FOV_MIN}" max="${FOV_MAX}" step="1" id="s-fov" value="${s.fov}"></label>
         <label class="f">Master volume<input type="range" min="0" max="1" step="0.05" id="s-master" value="${s.master}"></label>
         <label class="f">Effects volume<input type="range" min="0" max="1" step="0.05" id="s-sfx" value="${s.sfx}"></label>
         <label class="f">Crowd volume<input type="range" min="0" max="1" step="0.05" id="s-crowd" value="${s.crowd}"></label>
       </div>
       <h3>Controls</h3>${seg('invertY', [[false, 'Normal Y'], [true, 'Invert Y']])}
       <h3>Difficulty</h3>${seg('difficulty', Object.entries(DIFFICULTY).map(([k, d]) => [k, d.label]))}
-      <div class="small muted">Assisted (default) gives more pass/shot assistance and less AI pressure.</div>
+      <div class="small muted">Assisted (default): the ball sticks to your feet, passes find teammates and are chipped over blocked lanes, and opponents are slower and make more mistakes. Expert keeps only light assistance.</div>
       <h3>Camera</h3>${seg('bob', [[true, 'View bob on'], [false, 'View bob off']])} <div style="height:6px"></div>${seg('shake', [[true, 'Camera shake on'], [false, 'Camera shake off']])}
       <h3>Quality</h3>${seg('quality', [['low', 'Low'], ['medium', 'Medium'], ['high', 'High']])}
       <h3>Match length</h3>${seg('matchLength', [['short', '2 min halves'], ['normal', '3 min halves'], ['long', '5 min halves']])}
       <div class="row" style="margin-top:14px"><button class="btn primary" data-act="back">Done</button></div></div>`, {
       back: () => { app.applySettings(); fromPause ? this.pauseMenu() : this.mainMenu(); },
     });
-    const bindRange = (id, key, lab) => el.querySelector(id).addEventListener('input', (e) => { s[key] = parseFloat(e.target.value); if (lab) el.querySelector(lab).textContent = key === 'fov' ? s[key] : s[key].toFixed(2); app.applySettings(); });
+    const bindRange = (id, key, lab) => el.querySelector(id).addEventListener('input', (e) => { s[key] = parseFloat(e.target.value); if (lab) el.querySelector(lab).textContent = key === 'fov' ? fovLabel(s[key]) : s[key].toFixed(2); app.applySettings(); });
     bindRange('#s-sens', 'sensitivity', '#v-sens'); bindRange('#s-fov', 'fov', '#v-fov');
     bindRange('#s-master', 'master'); bindRange('#s-sfx', 'sfx'); bindRange('#s-crowd', 'crowd');
     el.querySelectorAll('.seg').forEach((g) => g.querySelectorAll('.btn').forEach((b) => b.addEventListener('click', () => {
@@ -438,7 +439,7 @@ export class Screens {
     this.show(`<div class="panel" style="width:min(860px,96vw);max-height:92vh;overflow:auto"><h2>How to Play</h2>
       <table class="t">${rows}</table>
       <h3>Playing</h3>
-      <p class="small">You control one footballer and see the match through their eyes. Your teammates and opponents are AI. Receive the ball with a soft first touch by simply letting it reach your feet (move to push the touch into space). Press pass just before the ball arrives for a first-time pass; hold shoot while the ball arrives for a first-time finish. The ring shows who your pass will go to - look towards a teammate to choose them. Press Space without the ball to call for it: a teammate acknowledges and passes when you are open.</p>
+      <p class="small">You control one footballer and see the match through their eyes. Your teammates and opponents are AI. Receive the ball with a soft first touch by simply letting it reach your feet (move to push the touch into space). Press pass just before the ball arrives for a first-time pass; hold shoot while the ball arrives for a first-time finish. The ring shows who your pass will go to - look towards a teammate to choose them. While you have the ball the screen edge glows green; your close control keeps it at your feet, so opponents have to tackle you for it. Press E near a dribbler to lunge in with a tackle. Press Space without the ball to call for it: a teammate acknowledges and passes when you are open. Settings has the difficulty (how much help you get and how sharp the opponents are) and a field of view from 60 to 200 degrees.</p>
       <h3>Rules</h3>
       <p class="small">7-a-side on a 64 x 42 m pitch with 5 x 2 m goals. Two halves (3 minutes each by default; the clock is shown as a 90-minute match and stops during stoppages). Kick-offs, throw-ins, corners, goal kicks, free kicks and penalties are used. <b>There is no offside</b> in this small-sided format. Keepers may handle anywhere in their own area (no back-pass rule). A goal counts only when the whole ball crosses the line between the posts and under the bar.</p>
       <h3>Career</h3>
@@ -521,3 +522,6 @@ export class Screens {
     });
   }
 }
+
+// field of view readout; past 120 degrees the game switches to its wide projection
+function fovLabel(v) { return v > 120 ? `${v}° (wide view)` : `${v}°`; }

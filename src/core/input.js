@@ -10,7 +10,7 @@ export const CONTROLS = [
   ['Left mouse', 'Shoot (hold to charge, release to strike)'],
   ['Right mouse', 'Pass to the highlighted teammate (hold briefly for more power)'],
   ['Space', 'Through pass (with the ball) / call for a pass (without it)'],
-  ['E', 'Standing tackle'],
+  ['E', 'Standing tackle (lunges at the ball when it is close)'],
   ['C', 'Slide tackle'],
   ['Esc', 'Pause'],
 ];

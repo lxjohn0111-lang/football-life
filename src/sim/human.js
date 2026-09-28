@@ -39,7 +39,7 @@ export class HumanController {
     // selected receiver marker (with hysteresis inside choosePassTarget)
     const incoming = !hasBall && !ball.owner && ball.state !== 'dead' && (this.intent || (m.passIntent && m.passIntent.target === p));
     if (hasBall || taker || incoming) {
-      this.passTarget = choosePassTarget(m, p, yaw, this.passTarget, m.assist === undefined ? 1 : 1);
+      this.passTarget = choosePassTarget(m, p, yaw, this.passTarget, m.assist.passCone);
       this.targetVisible = !!this.passTarget;
     } else {
       this.targetVisible = false;
@@ -66,7 +66,9 @@ export class HumanController {
     const keep = [];
     for (const e of this.buffer) {
       if (this.handle(e, hasBall)) continue;
-      if (now - e.t < RULES.INPUT_BUFFER && !e.type.endsWith('Up')) keep.push(e);
+      // tackles wait a little longer for a cooldown or a finishing action
+      const life = e.type === 'tackle' || e.type === 'slide' ? 0.4 : RULES.INPUT_BUFFER;
+      if (now - e.t < life && !e.type.endsWith('Up')) keep.push(e);
     }
     this.buffer = keep;
     this.updateIntent(hasBall);
@@ -109,9 +111,15 @@ export class HumanController {
         return true;
       }
       case 'tackle':
-        return startTackle(m, p) || !canAct(m, p) ? true : false;
-      case 'slide':
-        return startSlide(m, p) || now < p.slideReadyAt;
+      case 'slide': {
+        if (hasBall) return false; // on the ball: hold the press briefly in case it is being lost
+        // a tackle press overrides a first-time kick that hasn't been struck yet
+        if (a && a.type === 'kick' && !a.contacted && !a.owned) { p.action = null; p.faceYaw = null; }
+        this.intent = null;
+        const ok = e.type === 'tackle' ? startTackle(m, p) : startSlide(m, p);
+        if (ok) this.lastAction = { kind: e.type, t: now };
+        return ok;
+      }
       default:
         return true;
     }

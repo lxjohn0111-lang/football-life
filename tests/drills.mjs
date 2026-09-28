@@ -45,7 +45,9 @@ for (const kind of ['passing', 'finishing', 'dribbling']) {
       for (let i = 0; i < 120 * 40 && !d.done; i++) {
         const g = d.gates[d.next];
         if (!g) break;
-        const tx = g.c.x + 1.5, tz = g.c.z;
+        // line up in front of the gate first, then run straight through it
+        const lined = h.pos.x > g.c.x - 1.2 || Math.abs(h.pos.z - g.c.z) < 0.5;
+        const tx = lined ? g.c.x + 2.5 : g.c.x - 1.8, tz = g.c.z;
         const target = m.ball.owner === h || m.ball.pos.distXZ(h.pos) < 1.5 ? { x: tx, z: tz } : { x: m.ball.pos.x, z: m.ball.pos.z };
         const y = Math.atan2(target.x - h.pos.x, target.z - h.pos.z);
         ctl.input.yaw = y; s.cam.yaw = y; ctl.input.moveF = 1; ctl.input.moveR = 0;

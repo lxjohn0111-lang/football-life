@@ -107,7 +107,7 @@ export function actionSpeedCap(p) {
     }
     return jog * 0.85;
   }
-  if (a.type === 'tackle') return a.t < 0.32 ? 4.2 : 2.2;
+  if (a.type === 'tackle') return a.t < 0.32 ? (a.lunge || 4.2) : 2.2;
   if (a.type === 'slide') return a.sliding ? Infinity : 0.4;
   if (a.type === 'celebrate') return Infinity;
   return Infinity;
@@ -221,6 +221,7 @@ export function performKick(match, p, a) {
   const att = match.attackDir(p.team);
   const human = p.isHuman;
   const assist = human ? match.assist : null;
+  const opp = !human && match.isOpp(p) ? match.aiParams[p.team] : null;
   const run = clamp(p.speed / 7.5, 0, 1);
   const pressure = pressureOn(match, p);
   let onTarget = false;
@@ -241,6 +242,7 @@ export function performKick(match, p, a) {
     if (kind === 'shot') s = (0.011 + (100 - p.attrs.finishing) * 0.00045) * (1 + 0.45 * run + 0.6 * pressure);
     else s = (0.004 + (100 - p.attrs.passing) * 0.00022) * (1 + 0.35 * run + 0.45 * pressure);
     if (human && assist) s *= kind === 'shot' ? assist.shotError : assist.passError;
+    if (opp) s *= kind === 'shot' ? opp.shotErr : opp.passErr;
     if (a.foot !== p.foot) s *= 1.12;
     return s;
   };
@@ -253,7 +255,14 @@ export function performKick(match, p, a) {
         leadPoint(from, target, point, target.isGK ? 0 : 0.75, a.charge * 3);
         const d = from.distXZ(point);
         const arrive = target.isGK ? 3.5 : passArriveSpeed(d) + a.charge * 4.5;
-        groundPassVelocity(from, point, arrive, vel);
+        // pass assist: a ground pass that an opponent would cut out is chipped over instead
+        if (human && assist.autoLob && a.kind === 'pass' && !a.restart && d > 7 && !target.isGK &&
+            laneOpenness(match, from.x, from.z, point.x, point.z, p.team, 12) < 0.45) {
+          lobVelocity(from, from.y, point, clamp(0.42 + d * 0.006, 0.42, 0.62), vel);
+          a.lofted = true;
+        } else {
+          groundPassVelocity(from, point, arrive, vel);
+        }
       } else {
         const d = (a.kind === 'gkthrow' ? 18 : 11) + a.charge * 18;
         point = point || new V3(from.x + Math.sin(a.aimYaw) * d, 0, from.z + Math.cos(a.aimYaw) * d);
@@ -312,6 +321,13 @@ export function performKick(match, p, a) {
       groundPassVelocity(from, point, 2, vel);
       break;
     }
+  }
+  // opponents on easier difficulties sometimes mishit a pass: wrong direction, under or over hit
+  if (opp && PASS_KINDS.has(a.kind) && a.kind !== 'throw' && rng.next() < opp.mistake) {
+    rotateXZ(vel, (rng.next() < 0.5 ? -1 : 1) * (0.1 + rng.next() * 0.22));
+    const f = rng.next() < 0.6 ? 0.55 + rng.next() * 0.2 : 1.18 + rng.next() * 0.2;
+    vel.x *= f; vel.z *= f; if (vel.y > 0) vel.y *= Math.sqrt(f);
+    a.mishit = true;
   }
   if (a.kind === 'shot') onTarget = trajectoryOnTarget(from, vel, spin, att);
 
@@ -408,8 +424,12 @@ export function startTackle(match, p) {
   const ball = match.ball;
   let dir = p.yaw;
   const d = ball.pos.distXZ(p.pos);
-  if (d < 2.6) dir = yawOf(ball.pos.x - p.pos.x, ball.pos.z - p.pos.z);
-  p.action = { type: 'tackle', t: 0, dir, done: false, dur: 0.5, victims: new Set() };
+  // the human's tackle homes in on the ball from a little further away and
+  // lunges quickly enough to reach it
+  const homing = p.isHuman && d < 3.4 && ball.state !== 'held' && ball.state !== 'dead';
+  if (d < 2.6 || homing) dir = yawOf(ball.pos.x + ball.vel.x * 0.15 - p.pos.x, ball.pos.z + ball.vel.z * 0.15 - p.pos.z);
+  const lunge = homing ? clamp((d - 0.5) / 0.26 + 1.5, 4.2, 7.5) : 4.2;
+  p.action = { type: 'tackle', t: 0, dir, done: false, dur: 0.5, victims: new Set(), homing, lunge };
   p.tackleReadyAt = now + RULES.TACKLE_COOLDOWN;
   p.faceYaw = dir;
   match.events.emit('tackleAttempt', { player: p, t: now });
@@ -418,18 +438,24 @@ export function startTackle(match, p) {
 
 function updateTackle(match, p, a, dt) {
   const ball = match.ball, now = match.time;
+  if (a.homing && !a.done && a.t < 0.2) {
+    // keep tracking the ball during the first part of the lunge
+    a.dir = yawOf(ball.pos.x + ball.vel.x * 0.1 - p.pos.x, ball.pos.z + ball.vel.z * 0.1 - p.pos.z);
+  }
   p.faceYaw = a.dir;
   const fx = Math.sin(a.dir), fz = Math.cos(a.dir);
-  if (a.t < 0.22) {
-    // small forward weight shift
-    p.desired.x = fx * 4.2; p.desired.z = fz * 4.2;
+  if (a.t < (a.homing ? 0.28 : 0.22)) {
+    // forward weight shift (a real lunge for the human)
+    p.desired.x = fx * a.lunge; p.desired.z = fz * a.lunge;
   }
-  if (!a.done && a.t >= 0.07 && a.t <= 0.3) {
-    const ax = p.pos.x + fx * 0.25, az = p.pos.z + fz * 0.25;
-    const bx = p.pos.x + fx * 1.05, bz = p.pos.z + fz * 1.05;
+  const t0 = a.homing ? 0.04 : 0.07, t1 = a.homing ? 0.36 : 0.3;
+  if (!a.done && a.t >= t0 && a.t <= t1) {
+    const reachF = a.homing ? 1.2 : 1.05, hitR = a.homing ? 0.38 : 0.3;
+    const ax = p.pos.x + fx * 0.2, az = p.pos.z + fz * 0.2;
+    const bx = p.pos.x + fx * reachF, bz = p.pos.z + fz * reachF;
     const hit = pointSegDistXZ(ball.pos.x, ball.pos.z, ax, az, bx, bz);
     const owner = ball.owner;
-    if (hit.d < 0.3 + BALL_R && ball.pos.y < 0.6 && ball.state !== 'held' && ball.state !== 'dead') {
+    if (hit.d < hitR + BALL_R && ball.pos.y < 0.6 && ball.state !== 'held' && ball.state !== 'dead') {
       a.done = true;
       a.contactT = a.t;
       p.touch = { foot: 'R', time: now, x: ball.pos.x, y: ball.pos.y, z: ball.pos.z, kind: 'tackle' };
@@ -443,9 +469,15 @@ function updateTackle(match, p, a, dt) {
         let chance = 0.56 + (p.attrs.tackling - owner.attrs.control) * 0.007 + exposure * 0.26 - clamp(owner.speed / 8, 0, 1) * 0.1;
         if (!p.isHuman && match.aiParams[p.team]) chance += match.aiParams[p.team].tackleBonus;
         if (p.isHuman) chance += match.assist.tackle;
-        chance = clamp(chance, 0.18, 0.93);
+        if (owner.isHuman) chance -= match.assist.oppProtect;
+        chance = clamp(chance, owner.isHuman ? 0.1 : 0.18, p.isHuman ? 0.96 : 0.93);
         const success = match.rng.next() < chance;
-        if (success) {
+        if (success && p.isHuman) {
+          // the human's tackle knocks the ball back toward their own feet so it can be collected
+          const lat = (match.rng.next() - 0.5) * 0.6;
+          match.dislodge(owner, p, new V3(-fx * 1.3 + fz * lat, 0, -fz * 1.3 - fx * lat));
+          a.dur = Math.min(a.dur, a.t + 0.08);
+        } else if (success) {
           // dislodge the ball: it pops loose to the tackler's side
           const side = match.rng.next() < 0.5 ? -1 : 1;
           const px = -fx * 0.2 + fz * side * 0.6 + ox / ol * 0.5;
@@ -458,11 +490,19 @@ function updateTackle(match, p, a, dt) {
           owner.stumbleUntil = Math.max(owner.stumbleUntil, now + 0.15);
         }
       } else if (!owner || owner === p) {
-        // loose ball poke
-        const s = Math.max(3, ball.speed * 0.3);
-        ball.setVelocity(new V3(fx * s, 0, fz * s));
-        ball.state = 'free'; ball.owner = null;
-        match.touchBall(p, 'poke');
+        if (p.isHuman) {
+          // the human reaching a loose ball simply stops it at their feet
+          ball.setVelocity(new V3(p.vel.x * 0.7, 0, p.vel.z * 0.7));
+          ball.state = 'free'; ball.owner = null;
+          match.touchBall(p, 'poke');
+          a.dur = Math.min(a.dur, a.t + 0.05);
+        } else {
+          // loose ball poke
+          const s = Math.max(3, ball.speed * 0.3);
+          ball.setVelocity(new V3(fx * s, 0, fz * s));
+          ball.state = 'free'; ball.owner = null;
+          match.touchBall(p, 'poke');
+        }
       }
     } else if (owner && owner.team !== p.team && !a.victims.has(owner)) {
       // body-first contact on the ball carrier

@@ -167,6 +167,22 @@ html[data-style="neo"] .hud-arrow { border-left-color: #ff4fa3; opacity: 1; }
 html[data-style="neo"] .hud-banner { background: #ffe45c; transform: translate(-50%,-50%) rotate(-2deg); }
 html[data-style="neo"] .hud-banner.mine { background: #ff4fa3; }
 @keyframes bannerIn { from { transform: translate(-50%,-50%) scale(0.6); opacity: 0; } }
+/* possession: the screen edge pulses green while the player has the ball */
+.hud-poss { position: absolute; inset: 0; opacity: 0; transition: opacity .18s ease-out; box-shadow: inset 0 0 0 5px rgba(16,140,58,0.95); }
+.hud-poss::before { content: ""; position: absolute; inset: 0; box-shadow: inset 0 0 60px 26px rgba(12,168,64,0.7); animation: possPulse 1s ease-in-out infinite alternate; }
+.hud-poss.on { opacity: 1; }
+.hud-poss-label { position: absolute; left: 50%; bottom: 58px; transform: translateX(-50%); font-weight: 900; font-size: 15px; letter-spacing: 2px; color: #fff; background: #1a9a48; border: 1px solid #0d5e2a; padding: 4px 14px; white-space: nowrap; animation: possLabel 1s ease-in-out infinite alternate; }
+.hud-poss.on .hud-poss-label { animation: possIn .22s ease-out, possLabel 1s ease-in-out .22s infinite alternate; }
+html[data-style="neo"] .hud-poss { box-shadow: inset 0 0 0 9px #00d65c, inset 0 0 0 12px #000; }
+html[data-style="neo"] .hud-poss::before { box-shadow: inset 0 0 0 22px rgba(0,214,92,0.45); }
+html[data-style="neo"] .hud-poss-label { background: #00d65c; color: #000; border: 3px solid #000; box-shadow: 4px 4px 0 #000; font-size: 17px; bottom: 64px; }
+@keyframes possPulse { from { opacity: 0.3; } to { opacity: 1; } }
+@keyframes possLabel { from { transform: translateX(-50%) scale(1); } to { transform: translateX(-50%) scale(1.06); } }
+@keyframes possIn { from { transform: translateX(-50%) scale(0.6); opacity: 0; } to { transform: translateX(-50%) scale(1); opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  .hud-poss::before, .hud-poss-label, .hud-poss.on .hud-poss-label { animation: none; }
+  .hud-poss::before { opacity: 0.8; }
+}
 .hud-fade { position: absolute; inset: 0; background: var(--paper); opacity: 0; }
 .hud-fade.on { animation: fadeFlash .45s ease-out; }
 @keyframes fadeFlash { 0% { opacity: 1; } 100% { opacity: 0; } }

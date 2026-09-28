@@ -14,10 +14,28 @@ import { AIDirector, aiParamsFor } from './ai.js';
 import { keeperHandles, keeperContact } from './keeper.js';
 import { MatchStats } from './stats.js';
 
+// Difficulty shapes assistance for the human (errors, touch, dribble stickiness,
+// receiving radius, pass targeting) and how sharp the opposing team is
+// (reaction, pressing, passing mistakes, heavy touches). Teammates are unaffected.
 export const DIFFICULTY = {
-  assisted: { label: 'Assisted', passError: 0.55, shotError: 0.72, shotAim: 1.0, touch: 0.6, tackle: 0.06, oppReact: 1.22, oppAggro: 0.75, oppNoise: 0.04 },
-  standard: { label: 'Standard', passError: 0.8, shotError: 0.9, shotAim: 0.6, touch: 0.8, tackle: 0.02, oppReact: 1.0, oppAggro: 1.0, oppNoise: 0 },
-  expert: { label: 'Expert', passError: 1.0, shotError: 1.0, shotAim: 0.3, touch: 1.0, tackle: 0, oppReact: 0.86, oppAggro: 1.2, oppNoise: -0.02 },
+  assisted: {
+    label: 'Assisted', passError: 0.3, shotError: 0.65, shotAim: 1.0, touch: 0.45, tackle: 0.24,
+    stick: 1.0, claim: 1.25, passCone: 1.1, autoLob: true,
+    oppReact: 1.55, oppAggro: 0.5, oppNoise: 0.14, oppPassError: 3.0, oppMistake: 0.16,
+    oppTouch: 2.0, oppShotError: 1.7, oppProtect: 0.24, oppHumanPassReact: 0.34,
+  },
+  standard: {
+    label: 'Standard', passError: 0.55, shotError: 0.85, shotAim: 0.7, touch: 0.65, tackle: 0.14,
+    stick: 0.75, claim: 1.12, passCone: 0.95, autoLob: true,
+    oppReact: 1.0, oppAggro: 1.1, oppNoise: 0.03, oppPassError: 1.35, oppMistake: 0.04,
+    oppTouch: 1.15, oppShotError: 1.05, oppProtect: 0, oppHumanPassReact: 0.2,
+  },
+  expert: {
+    label: 'Expert', passError: 0.85, shotError: 1.0, shotAim: 0.35, touch: 0.9, tackle: 0.02,
+    stick: 0.5, claim: 1.05, passCone: 0.8, autoLob: false,
+    oppReact: 0.9, oppAggro: 1.22, oppNoise: 0, oppPassError: 1.0, oppMistake: 0.01,
+    oppTouch: 1.0, oppShotError: 0.95, oppProtect: -0.04, oppHumanPassReact: 0.16,
+  },
 };
 
 export class Match {
@@ -102,6 +120,8 @@ export class Match {
   ownGoalX(team) { return -this.teams[team].attack * PITCH.HL; }
   teamOf(p) { return this.teams[p.team]; }
   opponents(team) { return this.teams[1 - team].players; }
+  // an AI player on the side playing against the human (difficulty applies to these)
+  isOpp(p) { return !!this.human && p.team !== this.human.team; }
   keeper(team) { return this.teams[team].players.find((p) => p.isGK) || null; }
   get scoreline() { return [this.teams[0].score, this.teams[1].score]; }
 

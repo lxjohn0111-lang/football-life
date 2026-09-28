@@ -27,10 +27,16 @@ export function aiParamsFor(match, team) {
     tackleBonus: [-0.06, -0.03, 0, 0.02, 0.04][idx],
     humanBonus: humanTeam ? [0.42, 0.36, 0.3, 0.24, 0.2][idx] : 0,
     holdMin: [0.55, 0.45, 0.38, 0.3, 0.26][idx],
-    gkReaction: [0.34, 0.3, 0.27, 0.24, 0.21][idx] * (opp ? d.oppReact : 1),
+    gkReaction: [0.34, 0.3, 0.27, 0.24, 0.21][idx] * (opp ? 1 + (d.oppReact - 1) * 0.5 : 1),
     gkHold: [1.9, 1.7, 1.5, 1.35, 1.2][idx],
     slideChance: [0.04, 0.05, 0.05, 0.06, 0.06][idx] * (opp ? d.oppAggro : 1),
     shootBias: [0.0, 0.02, 0.04, 0.05, 0.06][idx],
+    // the difficulty's handicap on the human's opponents (errors, heavy touches,
+    // mishit passes); stronger clubs shed part of it so tiers still feel different
+    passErr: opp ? 1 + (d.oppPassError - 1) * (1 - 0.1 * idx) : 1,
+    shotErr: opp ? 1 + (d.oppShotError - 1) * (1 - 0.1 * idx) : 1,
+    touch: opp ? 1 + (d.oppTouch - 1) * (1 - 0.1 * idx) : 1,
+    mistake: opp ? d.oppMistake * (1 - 0.1 * idx) : 0,
   };
 }
 

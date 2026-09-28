@@ -193,7 +193,7 @@ export class MatchSession {
     }
     const it = this.ctl && this.ctl.intent;
     return {
-      match: m, camera: this.view.camera, camYaw: this.cam.yaw, style: this.view.style,
+      match: m, camera: this.view.camera, view: this.view, camYaw: this.cam.yaw, style: this.view.style,
       kitA: this.kitA, kitB: this.kitB, hint,
       intentCharge: it && it.kind === 'shot' ? it.charge : 0,
       phaseText: m.phase === 'halftime' ? 'HALF TIME' : m.phase === 'fulltime' ? 'FULL TIME' : m.half === 2 ? '2ND HALF' : '1ST HALF',

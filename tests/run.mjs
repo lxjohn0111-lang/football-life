@@ -16,12 +16,12 @@ function test(name, fn) {
 }
 
 // a small controllable match: human (team 0) + optional others, rules on
-function scene({ human = 'CM', mates = [], opps = [], keeper = false } = {}) {
+function scene({ human = 'CM', mates = [], opps = [], keeper = false, difficulty = 'assisted' } = {}) {
   const t0 = makeTeam('A', 1, 'wing', { human: { role: human } });
   t0.players = [t0.players.find((p) => p.isHuman), ...mates.map((r, i) => ({ role: r, number: 20 + i, name: `M${i}`, attrs: { pace: 50, stamina: 60, control: 60, passing: 60, finishing: 50, tackling: 50 } }))];
   const t1 = makeTeam('B', 1, 'wing');
   t1.players = [...opps.map((r, i) => ({ role: r, number: 30 + i, name: `O${i}`, attrs: { pace: 50, stamina: 60, control: 50, passing: 50, finishing: 50, tackling: 50 } })), ...(keeper ? [{ role: 'GK', number: 1, name: 'GK', keeping: 50, attrs: { pace: 50, stamina: 50, control: 50, passing: 50, finishing: 50, tackling: 50 } }] : [])];
-  const m = new Match({ seed: 5, teams: [t0, t1], rules: true });
+  const m = new Match({ seed: 5, teams: [t0, t1], rules: true, difficulty });
   m.humanCtl = new HumanController(m, m.human);
   m.phase = 'playing';
   for (const p of m.players) p.scripted = true; // AI off unless enabled
@@ -117,7 +117,8 @@ test('completed pass, then assist + goal credited once', () => {
   assert.equal(st.assists, 1, 'no duplicate assist');
 });
 test('intercepted pass: interception for the opponent, possession lost for the passer', () => {
-  const m = scene({ mates: ['ST'], opps: ['DEF'] });
+  // expert: no pass assist, so the ground pass runs straight into the defender
+  const m = scene({ mates: ['ST'], opps: ['DEF'], difficulty: 'expert' });
   const mate = m.players.find((p) => p.role === 'ST'), opp = m.players.find((p) => p.team === 1);
   m.human.pos.set(0, 0, 0); m.human.yaw = Math.PI / 2; mate.pos.set(14, 0, 0); opp.pos.set(7, 0, 0.4);
   m.ball.place(0.6, 0); m.ball.state = 'free';
@@ -129,6 +130,18 @@ test('intercepted pass: interception for the opponent, possession lost for the p
   assert.equal(m.stats.s(opp).interceptions, 1);
   assert.equal(m.stats.s(m.human).possLost, 1);
   assert.equal(m.stats.s(m.human).passCmp, 0);
+});
+test('pass assist chips a blocked pass over the defender to the teammate', () => {
+  const m = scene({ mates: ['ST'], opps: ['DEF'] });
+  const mate = m.players.find((p) => p.role === 'ST'), opp = m.players.find((p) => p.team === 1);
+  m.human.pos.set(0, 0, 0); m.human.yaw = Math.PI / 2; mate.pos.set(14, 0, 0); opp.pos.set(7, 0, 0.4);
+  m.ball.place(0.6, 0); m.ball.state = 'free';
+  run(m, 0.3);
+  m.humanCtl.input.yaw = Math.PI / 2;
+  m.humanCtl.press('pass'); m.humanCtl.release('pass');
+  run(m, 2.5);
+  assert.equal(m.ball.owner, mate);
+  assert.equal(m.stats.s(m.human).passCmp, 1);
 });
 test('shot saved by the keeper counts as on target', () => {
   const m = scene({ keeper: true });
@@ -197,6 +210,61 @@ test('dribbling out of play is a possession loss (missed shots are not)', () => 
   run(m2, 3);
   assert.equal(m2.stats.s(m2.human).shots, 1);
   assert.equal(m2.stats.s(m2.human).possLost, 0);
+});
+
+console.log('Assistance');
+test('assisted dribbling keeps the ball at the human\'s feet through sprints and turns', () => {
+  const m = scene({ opps: [] });
+  m.human.pos.set(-20, 0, 0); m.human.yaw = Math.PI / 2; m.humanCtl.input.yaw = Math.PI / 2;
+  m.ball.place(-19.4, 0); m.ball.state = 'free';
+  run(m, 0.3);
+  assert.equal(m.ball.owner, m.human);
+  let maxD = 0;
+  const yaws = [Math.PI / 2, 0, Math.PI, Math.PI / 2 + 0.8, -Math.PI / 2];
+  m.humanCtl.input.moveF = 1; m.humanCtl.input.sprint = true;
+  for (const y of yaws) {
+    m.humanCtl.input.yaw = y;
+    run(m, 1.2, () => { maxD = Math.max(maxD, m.human.pos.distXZ(m.ball.pos)); });
+  }
+  assert.equal(m.ball.owner, m.human);
+  // stays inside the protected zone, so opponents can only win it with a tackle
+  assert.ok(maxD < 1.1, `ball strayed ${maxD.toFixed(2)} m`);
+});
+test('tackle press fires even while a first-time kick is pending or on cooldown', () => {
+  const m = scene({ opps: ['ST'] });
+  const opp = m.players.find((p) => p.team === 1);
+  opp.pos.set(10, 0, 10);
+  m.human.pos.set(0, 0, 0);
+  m.ball.place(6, 0); m.ball.state = 'free'; m.ball.setVelocity(new V3(-6, 0, 0));
+  m.humanCtl.press('pass'); // intent to play the incoming ball first time
+  run(m, 0.3);
+  m.humanCtl.press('tackle');
+  run(m, 1 / 120);
+  assert.equal(m.human.action && m.human.action.type, 'tackle');
+  // a second press during the cooldown is held and fires once allowed
+  run(m, 0.2);
+  m.humanCtl.press('tackle');
+  let fired = false; const t0 = m.human.action;
+  run(m, 0.45, () => { if (m.human.action && m.human.action.type === 'tackle' && m.human.action !== t0) fired = true; });
+  assert.ok(fired, 'buffered tackle fired');
+});
+test('the human\'s tackle reaches a carrier 2.5 m away and wins the ball', () => {
+  let won = 0;
+  for (let k = 0; k < 4; k++) {
+    const m = scene({ opps: ['ST'] });
+    m.rng.s = 100 + k;
+    const opp = m.players.find((p) => p.team === 1);
+    m.human.pos.set(-12, 0, 0);
+    opp.pos.set(0, 0, 0); opp.yaw = -Math.PI / 2;
+    m.ball.place(-0.6, 0); m.ball.state = 'free';
+    run(m, 0.3);
+    assert.equal(m.ball.owner, opp);
+    m.human.pos.set(-3.1, 0, 0); m.human.yaw = Math.PI / 2; m.humanCtl.input.yaw = Math.PI / 2;
+    m.humanCtl.press('tackle');
+    run(m, 1.2);
+    if (m.ball.owner === m.human) won++;
+  }
+  assert.ok(won >= 3, `won ${won}/4`);
 });
 
 console.log('Determinism and frame-rate independence');

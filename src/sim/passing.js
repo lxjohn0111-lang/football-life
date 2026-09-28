@@ -57,10 +57,16 @@ export function clampInPitch(v, margin = 0.5) {
   return v;
 }
 
-// Choose the teammate the human is aiming at. Returns {target, score} or null.
-export function choosePassTarget(match, p, aimYaw, prev, assist = 1) {
-  const ax = Math.sin(aimYaw), az = Math.cos(aimYaw);
-  const cone = (0.62 + 0.1 * assist); // radians half-angle (~40deg)
+// Choose the teammate the human is aiming at. `cone` is the half-angle (radians)
+// the difficulty's pass assist allows; with a wide cone and nobody inside it the
+// search widens further so a pass still finds a teammate.
+export function choosePassTarget(match, p, aimYaw, prev, cone = 0.72) {
+  let best = pickTarget(match, p, aimYaw, prev, cone);
+  if (!best && cone >= 1.0) best = pickTarget(match, p, aimYaw, null, 1.6);
+  return best;
+}
+
+function pickTarget(match, p, aimYaw, prev, cone) {
   let best = null, bestScore = -Infinity, prevScore = -Infinity;
   for (const t of match.players) {
     if (t === p || t.team !== p.team) continue;
@@ -74,7 +80,7 @@ export function choosePassTarget(match, p, aimYaw, prev, assist = 1) {
     const angScore = 1 - ang / cone;
     const distScore = d < 5 ? 0.55 : d < 26 ? 1 - Math.abs(d - 14) / 30 : Math.max(0, 0.6 - (d - 26) / 30);
     const open = laneOpenness(match, p.pos.x, p.pos.z, tmpA.x, tmpA.z, p.team, 12);
-    let score = angScore * angScore * 1.8 + distScore * 0.45 + open * 0.8;
+    let score = angScore * angScore * 1.8 + distScore * 0.45 + open * (cone > 0.9 ? 1.1 : 0.8);
     if (t.isGK) score -= 0.7;
     if (t === prev) { score += 0.3; prevScore = score; }
     if (score > bestScore) { bestScore = score; best = t; }

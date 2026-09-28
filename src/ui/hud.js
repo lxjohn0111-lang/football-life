@@ -15,6 +15,10 @@ const el = (tag, cls, parent, html) => {
 export class Hud {
   constructor(root) {
     this.root = el('div', 'hud hidden', root);
+    // drawn first so every other HUD element sits on top of the glow
+    this.poss = el('div', 'hud-poss', this.root);
+    el('div', 'hud-poss-label', this.poss, 'YOU HAVE THE BALL');
+    this.hasBall = false;
     const top = el('div', 'hud-top', this.root);
     this.teamA = el('span', 'hud-team', top);
     this.score = el('span', 'hud-score', top, '0 - 0');
@@ -85,21 +89,22 @@ export class Hud {
     this.power.classList.toggle('hidden', !(charging || intentCharge > 0.01));
     if (charging || intentCharge > 0.01) this.powerFill.style.width = `${Math.round((charging ? a.charge : intentCharge) * 100)}%`;
     this.hint.textContent = s.hint || '';
+    const has = !!h && m.ball.owner === h && m.ball.state === 'controlled' && m.phase === 'playing';
+    if (has !== this.hasBall) { this.hasBall = has; this.poss.classList.toggle('on', has); }
     this.banner.classList.toggle('hidden', performance.now() > this.bannerUntil);
     this.updateArrow(s);
     this.drawRadar(s);
   }
 
   updateArrow(s) {
-    const cam = s.camera, m = s.match;
+    const m = s.match;
     const b = m.ball.pos;
-    const v = this.v.set(b.x, b.y, b.z).project(cam);
-    const behind = v.z > 1;
-    const off = behind || Math.abs(v.x) > 0.98 || Math.abs(v.y) > 0.98;
-    if (!off || m.phase === 'goal' || s.noArrow) { this.arrow.classList.add('hidden'); return; }
-    let x = v.x, y = v.y;
-    if (behind) { x = -x; y = -y; }
-    const ang = Math.atan2(y, x);
+    // screen position under the view's projection (normal or wide field of view)
+    const v = s.view.projectToScreen(this.v.set(b.x, b.y, b.z), this.v);
+    const off = Math.abs(v.x) > 0.98 || Math.abs(v.y) > 0.98;
+    // no arrow while the ball is at the player's own feet (the possession glow says so)
+    if (!off || m.phase === 'goal' || s.noArrow || this.hasBall) { this.arrow.classList.add('hidden'); return; }
+    const ang = Math.atan2(v.y, v.x);
     const r = 0.86;
     const k = Math.min(r / Math.max(Math.abs(Math.cos(ang)), 1e-3), r / Math.max(Math.abs(Math.sin(ang)), 1e-3));
     const px = (Math.cos(ang) * k * 0.5 + 0.5) * 100, py = (-Math.sin(ang) * k * 0.5 + 0.5) * 100;

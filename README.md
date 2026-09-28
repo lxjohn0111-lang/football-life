@@ -41,7 +41,7 @@ One scheme is used everywhere (tutorial text, HUD hints, menus):
 | Left mouse | Shoot: hold to charge (full at ~0.65 s, fires automatically at ~0.85 s), release to strike. A tap is a quick shot. |
 | Right mouse | Pass to the highlighted teammate. A tap sends the right weight for the distance; holding briefly adds power. |
 | Space | With the ball: through pass into the highlighted teammate's run. Without it: call for the ball. |
-| E | Standing tackle |
+| E | Standing tackle: lunges at the ball if it is within about 3 m. A press during a cooldown or a pending first-time kick is held briefly and fires as soon as possible. |
 | C | Slide tackle (1.5 s cooldown, costs stamina) |
 | Esc | Pause (Resume, Controls, Settings, Visual Style, Match Statistics, Exit) |
 
@@ -51,12 +51,23 @@ One scheme is used everywhere (tutorial text, HUD hints, menus):
 
 ### Playing tips
 
-- **Receiving:** let the ball reach your feet (a generous ~1 m zone). The first touch softens the ball and places it in front of you, into the direction you are moving.
+- **Receiving:** let the ball reach your feet (a ~1 m zone, up to 1.25 m on Assisted). The first touch softens the ball and places it in front of you, into the direction you are moving.
+- **Dribbling:** while you have the ball the screen edge pulses green with **YOU HAVE THE BALL**. Your close control keeps the ball about half a metre ahead (under a metre at a full sprint) and it follows your turns; opponents can't simply step in and take it, they have to tackle. How tightly it sticks depends on the difficulty. AI players (teammates and opponents) dribble with ordinary physical touches.
 - **First-time play:** press pass (or hold shoot) just before the ball arrives and you will play it first time as soon as contact is possible.
-- **Passing:** look towards a teammate; a ring marks the selected receiver. With no teammate in the aiming cone the pass goes into the space you are looking at.
+- **Passing:** look towards a teammate; a ring marks the selected receiver. Pass assistance picks the best open teammate near where you look (a wide cone on Assisted, narrower on Expert) and weighs the pass for the distance. On Assisted and Standard, a ground pass whose lane is blocked by an opponent is automatically chipped over them. With no teammate in range the pass goes into the space you are looking at.
 - **Shooting:** aim with the crosshair. Low aim = low shot, higher aim = rising shot. A little assistance pulls slightly-wide shots back inside the post when you face the goal, but it never turns a bad shot into a certain goal.
-- **Tackling:** approach the exposed side of the ball (not through the dribbler). Late, body-first challenges (especially from behind or with a slide) are fouls.
+- **Tackling:** press E near the ball carrier: your tackle homes in on the ball and, when it wins it, knocks it back to your feet. Approach the exposed side of the ball (not through the dribbler). Late, body-first challenges (especially from behind or with a slide) are fouls.
 - **Stamina:** sprinting and sliding use stamina, jogging and walking restore it. Low stamina modestly lowers top sprint speed only.
+
+### Settings and difficulty
+
+- **Field of view** is horizontal, 60-200 degrees, default 100. Up to 120 degrees the view is an ordinary perspective. Wider settings switch to a wide-angle projection: the scene is rendered into a cube map around your eye and remapped to the screen, blending smoothly from the ordinary view at 120 degrees to a stereographic projection from about 175 degrees (which is what makes 200 degrees possible without extreme stretching). The wide projection draws the scene up to six times per frame (about 45-50 draw calls instead of 10-16), so use Medium or Low quality on slower machines.
+- **Difficulty** changes the help you get and how sharp the opposing team is. Your teammates are never weakened.
+  - *Assisted* (default): the ball sticks tightly to your feet, bigger receiving zone, accurate passes with a wide targeting cone and automatic chips over blocked lanes, strong tackle help. Opponents react and press less, make frequent passing mistakes (misdirected, under- or over-hit), take heavy touches and shoot less accurately.
+  - *Standard*: a little less of each kind of help; opponents press properly and make occasional mistakes.
+  - *Expert*: light assistance, no automatic chips; opponents play at full sharpness.
+  - Higher-tier opponents keep more of their quality at every difficulty, so the climb through the tiers still feels harder.
+- Mouse sensitivity, invert Y, audio volumes, view bob, camera shake, quality and match length are also in Settings.
 
 ## Match rules
 
@@ -123,8 +134,8 @@ Every surface belongs to a shared material role (pitch, lines, stands, crowd, sh
 
 - **Simulation** (`src/sim`) is independent of rendering and runs at a fixed 120 Hz with interpolated rendering. The ball has one authoritative model with explicit states (free, controlled, airborne, held, dead), gravity, drag, rolling resistance, energy-losing bounces, substepped swept collisions against posts, crossbar, nets and bodies, and an inelastic net that absorbs goals. Only one player controls the ball at a time; simultaneous claims resolve deterministically.
 - **Actions** have anticipation, an explicit contact moment and follow-through; the ball impulse and the contact sound happen at the contact tick, and only if the ball is inside the kicking foot's reach. Kickers cannot recapture the ball for 250 ms.
-- **Dribbling** is physical: short foot-contact impulses timed from the gait (alternating feet) push the ball ahead; sprinting pushes it further (interception chances), turning takes more than one touch at speed.
-- **AI** teammates and opponents use the same movement limits, contact rules and cooldowns as you: formation zones that shift with the ball, one presser plus a cover player, marking, support triangles, forward runs, anticipation of where the ball will be, separation steering and stuck recovery. Tiers change reaction time and decision quality only. Keepers position on the ball-goal line, react after a delay, dive with limited reach, catch or parry only on physical contact, and distribute within a few seconds.
+- **Dribbling** for AI players is physical: short foot-contact impulses timed from the gait (alternating feet) push the ball ahead; sprinting pushes it further (interception chances), turning takes more than one touch at speed. Your own dribbling uses assisted close control: the ball is steered each tick toward a point just ahead of your feet (leading your run, biased toward where you look) with a spring whose strength depends on the difficulty, while your feet still animate touches on the stride.
+- **AI** teammates and opponents use the same movement limits, contact rules and cooldowns as you: formation zones that shift with the ball, one presser plus a cover player, marking, support triangles, forward runs, anticipation of where the ball will be, separation steering and stuck recovery. Tiers change reaction time and decision quality only. The difficulty setting additionally handicaps only the team playing against you (see Settings and difficulty). Keepers position on the ball-goal line, react after a delay, dive with limited reach, catch or parry only on physical contact, and distribute within a few seconds.
 - **Rendering** (`src/render`) uses three.js with custom shaders. Edges are fat screen-space lines computed per primitive on the GPU: crease edges are always drawn, smooth edges only where they form a silhouette from the current viewpoint, so spheres and cylinders get clean outlines. All players and the ball are one mesh plus one edge batch whose rigid parts are posed from a float texture; static stadium geometry (including thousands of spectators, animated in the vertex shader) is merged into one mesh and one edge batch. A match typically renders in 12-16 draw calls.
 - **Animation** is procedural: feet are planted in world space from the simulation's gait phase (no foot sliding), legs and arms use two-bone IK, and kicks, tackles, slides, keeper dives, throw-ins, falls and celebrations are pose layers driven by the same action timers as the simulation.
 
@@ -139,7 +150,9 @@ node tests/pacing.mjs         # matches needed to reach the elite tier by form
 node tests/shooting.mjs 1     # shot placement vs keeper at a given tier
 ```
 
-Browser checks (require Playwright with Chromium, `node server.js` running) write screenshots to `tests/out/`: `tests/browser.mjs` (venues and styles), `tests/flow.mjs` (create career → match → report → hub, reload persistence), `tests/ui.mjs` (menus, pause, settings), `tests/drills.mjs`, `tests/fulltime.mjs`, `tests/styleswitch.mjs` (mid-match style switch leaves the simulation identical), `tests/robust.mjs` (focus loss, corrupted save), `tests/fp.mjs`, `tests/poses.mjs`, `tests/net.mjs`, `tests/bigvenues.mjs [classic|neo]`.
+Browser checks (require Playwright with Chromium, `node server.js` running) write screenshots to `tests/out/`: `tests/browser.mjs` (venues and styles), `tests/flow.mjs` (create career → match → report → hub, reload persistence), `tests/ui.mjs` (menus, pause, settings), `tests/drills.mjs`, `tests/fulltime.mjs`, `tests/styleswitch.mjs` (mid-match style switch leaves the simulation identical), `tests/robust.mjs` (focus loss, corrupted save), `tests/fp.mjs`, `tests/poses.mjs`, `tests/net.mjs`, `tests/bigvenues.mjs [classic|neo]`, `tests/fov.mjs` (normal and wide field of view), `tests/possession.mjs` (possession glow in both styles), `tests/controls.mjs` (real keyboard/mouse: E tackles, W+Shift dribbling while swinging the view, FOV slider).
+
+`node tests/human.mjs 4 ST 1 standard` takes the difficulty as a fifth argument and also reports the opposing team's pass completion, shots and goals.
 
 ## Remaining limitations
 
@@ -149,3 +162,4 @@ Browser checks (require Playwright with Chromium, `node server.js` running) writ
 - The crowd, scoreboards and advertising are decorative; the crowd reacts to danger and goals through sound and animation only.
 - Performance was verified for draw calls and geometry budgets; very large stadiums (Premier Arena, Continental Stadium) are the heaviest scenes, and the Low quality setting reduces crowd density and resolution for weaker GPUs.
 - Audio is synthesised procedurally and is intentionally simple.
+- The wide field-of-view projection (above 120 degrees) renders cube-map faces without multisampling; faces are rendered slightly above screen resolution to soften edges, but lines can look a little rougher than in the normal view.
