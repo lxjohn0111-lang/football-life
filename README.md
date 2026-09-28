@@ -139,7 +139,7 @@ node tests/pacing.mjs         # matches needed to reach the elite tier by form
 node tests/shooting.mjs 1     # shot placement vs keeper at a given tier
 ```
 
-Browser checks (require Playwright with Chromium, `node server.js` running): `tests/browser.mjs`, `tests/flow.mjs`, `tests/fp.mjs`, `tests/poses.mjs`, `tests/net.mjs` write screenshots to `tests/out/`.
+Browser checks (require Playwright with Chromium, `node server.js` running) write screenshots to `tests/out/`: `tests/browser.mjs` (venues and styles), `tests/flow.mjs` (create career → match → report → hub, reload persistence), `tests/ui.mjs` (menus, pause, settings), `tests/drills.mjs`, `tests/fulltime.mjs`, `tests/styleswitch.mjs` (mid-match style switch leaves the simulation identical), `tests/robust.mjs` (focus loss, corrupted save), `tests/fp.mjs`, `tests/poses.mjs`, `tests/net.mjs`, `tests/bigvenues.mjs [classic|neo]`.
 
 ## Remaining limitations
 
