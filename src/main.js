@@ -112,7 +112,7 @@ class App {
     dt = Math.min(dt, 0.1);
     const s = this.session || this.menuSession;
     if (s) s.frame(this.paused && this.session ? 0 : dt);
-    const playing = !!(this.session && this.session.human && !this.paused && !this.session.ended);
+    const playing = !!(this.session && this.session.human && !this.paused && !this.session.ended && !this.session.replay);
     this.touch.setVisible(this.input.touchMode && playing);
     if (this.touch.visible) this.touch.update(this.session);
     if (this.onFrame) this.onFrame(dt);

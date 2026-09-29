@@ -14,6 +14,7 @@ export const DEFAULT_SETTINGS = {
   master: 0.8, sfx: 0.9, crowd: 0.6,
   difficulty: 'assisted', bob: true, shake: true, quality: 'high', matchLength: 'normal',
   touch: 'auto', // on-screen touch controls: auto (touch screens), on, off
+  replays: true, // slow-motion drone replay after every goal
 };
 
 export function hasSavedSettings() {

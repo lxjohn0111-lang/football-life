@@ -10,6 +10,7 @@ import { Animator } from './anim.js';
 import { Atlas, ScoreboardTexture } from './atlas.js';
 import { BlobShadows, Markers, Burst } from './effects.js';
 import { BALL_R, PITCH } from '../sim/constants.js';
+import { ReplayRecorder } from './replay.js';
 
 THREE.ColorManagement.enabled = false;
 
@@ -232,6 +233,15 @@ export class SceneView {
     this.batch = new CharacterBatch(this.match.players, this.atlas, { kits: this.kits, quality: this.quality });
     this.scene.add(this.batch.mesh, this.batch.edges);
     this.animators = this.match.players.map((p) => new Animator(p));
+    if (this.recorder) this.setRecording(true);
+  }
+
+  // keep the last seconds of what is drawn, for goal replays
+  setRecording(on) {
+    if (!on || !this.match) { this.recorder = null; return; }
+    const n = this.match.players.length;
+    if (this.recorder && this.recorder.n === n) this.recorder.clear();
+    else this.recorder = new ReplayRecorder(n);
   }
 
   updateScoreboard(force) {
@@ -250,8 +260,10 @@ export class SceneView {
     // crowd excitement
     this.crowdLevel = Math.max(extras.crowd ?? 0, this.crowdLevel - dt * 0.35);
     SU.uCrowd.value = this.crowdLevel;
-    if (m && this.batch) {
+    if (m && this.batch && extras.replay) this.drawReplayFrame(extras.replay, dt);
+    else if (m && this.batch) {
       const now = m.time - (1 - alpha) * (1 / 120);
+      const rec = this.recorder && this.recorder.begin(now) ? this.recorder : null;
       const b = m.ball;
       this.ballPos.set(b.prevPos.x + (b.pos.x - b.prevPos.x) * alpha, b.prevPos.y + (b.pos.y - b.prevPos.y) * alpha, b.prevPos.z + (b.pos.z - b.prevPos.z) * alpha);
       const qa = this._qa || (this._qa = new THREE.Quaternion()), qb = this._qb || (this._qb = new THREE.Quaternion());
@@ -267,6 +279,7 @@ export class SceneView {
         const p = an.p;
         ctx.local = p === this.localPlayer && this.firstPerson;
         const mats = an.update(ctx);
+        if (rec) rec.putPlayer(i, mats);
         const base = i * PER;
         for (let k = 0; k < PER; k++) this.batch.setMatrix(base + k, mats[k]);
         if (ctx.local && this.hideHead) {
@@ -280,12 +293,45 @@ export class SceneView {
       this.blobs.end();
       this.batch.commit();
       this.updateNets(dt);
+      if (rec) rec.end(this.ballPos, this.ballQ, this.crowdLevel, SU.uNetA.value, SU.uNetDA.value, SU.uNetB.value, SU.uNetDB.value);
       this.updateScoreboard(false);
     }
     this.burst.update(dt);
     this.updateCamera(cam, dt, alpha);
+    // test hook: everything above (animation, recording, camera) runs, only the draw is skipped
+    if (this.noDraw) return;
     if (this.isWide()) this.renderWide();
     else this.renderer.render(this.scene, this.camera);
+  }
+
+  // a recorded frame (goal replay): every body part exactly as it was drawn, the
+  // player's own body included, plus the ball, its shadow, the nets and the crowd
+  drawReplayFrame(f, dt) {
+    const bt = this.batch, d = bt.data, p = f.parts;
+    this.ballPos.copy(f.ball);
+    this.ballQ.copy(f.q);
+    this.ballM.compose(this.ballPos, this.ballQ, this._one || (this._one = new THREE.Vector3(1, 1, 1)));
+    bt.setMatrix(bt.ballRow, this.ballM);
+    const rows = this.animators.length * PER;
+    for (let r = 0; r < rows; r++) {
+      const o = r * 16, s = r * 12;
+      d[o] = p[s]; d[o + 1] = p[s + 1]; d[o + 2] = p[s + 2]; d[o + 3] = 0;
+      d[o + 4] = p[s + 3]; d[o + 5] = p[s + 4]; d[o + 6] = p[s + 5]; d[o + 7] = 0;
+      d[o + 8] = p[s + 6]; d[o + 9] = p[s + 7]; d[o + 10] = p[s + 8]; d[o + 11] = 0;
+      d[o + 12] = p[s + 9]; d[o + 13] = p[s + 10]; d[o + 14] = p[s + 11]; d[o + 15] = 1;
+    }
+    this.blobs.begin();
+    if (this.blobShowPlayers) for (let i = 0; i < this.animators.length; i++) this.blobs.add(p[i * PER * 12 + 9], p[i * PER * 12 + 11], 0.95, 0.2);
+    const h = Math.max(0, this.ballPos.y - BALL_R);
+    this.blobs.add(this.ballPos.x, this.ballPos.z, 0.34 + h * 0.12, 0.42 / (1 + h * 0.8));
+    this.blobs.end();
+    bt.commit();
+    const n = f.nets;
+    SU.uNetA.value.set(n[0], n[1], n[2], n[3]); SU.uNetDA.value.set(n[4], n[5], n[6]);
+    SU.uNetB.value.set(n[7], n[8], n[9], n[10]); SU.uNetDB.value.set(n[11], n[12], n[13]);
+    this.crowdLevel = Math.max(this.crowdLevel, f.crowd);
+    SU.uCrowd.value = this.crowdLevel;
+    void dt;
   }
 
   // ------------------------------------------------------------- wide FOV
@@ -463,6 +509,7 @@ export class SceneView {
       const P = cam.pos, L = cam.look;
       c.position.set(P.x ?? P[0], P.y ?? P[1], P.z ?? P[2]);
       if (L) c.lookAt(L.x ?? L[0], L.y ?? L[1], L.z ?? L[2]); else c.rotation.set(cam.pitch || 0, (cam.yaw || 0) + Math.PI, 0, 'YXZ');
+      if (cam.roll) c.rotateZ(cam.roll);
     }
   }
 

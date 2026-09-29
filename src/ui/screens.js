@@ -516,6 +516,7 @@ export class Screens {
       <h3>Difficulty</h3>${seg('difficulty', Object.entries(DIFFICULTY).map(([k, d]) => [k, d.label]))}
       <div class="small muted">Assisted (default): the ball sticks to your feet, passes find teammates and are chipped over blocked lanes, and opponents are slower and make more mistakes. Expert keeps only light assistance.</div>
       <h3>Camera</h3>${seg('bob', [[true, 'View bob on'], [false, 'View bob off']])} <div style="height:6px"></div>${seg('shake', [[true, 'Camera shake on'], [false, 'Camera shake off']])}
+      <div style="height:6px"></div>${seg('replays', [[true, 'Goal replays on'], [false, 'Goal replays off']])}
       <h3>Quality</h3>${seg('quality', [['low', 'Low'], ['medium', 'Medium'], ['high', 'High']])}
       <h3>Match length</h3>${seg('matchLength', [['short', '2 min halves'], ['normal', '3 min halves'], ['long', '5 min halves']])}
       <div class="row" style="margin-top:14px"><button class="btn primary" data-act="back">Done</button></div></div>`, {

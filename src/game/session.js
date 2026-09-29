@@ -4,6 +4,7 @@ import { Match } from '../sim/match.js';
 import { HumanController } from '../sim/human.js';
 import { DT, PITCH } from '../sim/constants.js';
 import { VENUES } from '../render/venues.js';
+import { ReplayDirector } from '../render/replay.js';
 
 const MAX_STEPS = 12;
 
@@ -35,13 +36,76 @@ export class MatchSession {
     this.view.setMatch(m, cfg.colours);
     this.view.localPlayer = this.human;
     this.view.firstPerson = !!this.human;
+    // goal replays in real matches (not in drills, the tutorial or the menu background)
+    this.replays = (cfg.mode === 'career' || cfg.mode === 'quick') && app.settings.replays !== false && !app.params?.has('noreplay');
+    this.view.setRecording(this.replays);
+    this.replay = null;
+    this.pendingReplay = null;
+    this.hud.onSkipReplay = () => this.skipReplay();
     this.hookEvents();
     if (this.human) {
       this.unsubs.push(this.input.on((type, down) => {
         if (this.paused || !this.ctl) return;
+        // during a replay any action skips it and nothing reaches the player
+        if (this.replay) { if (down) this.skipReplay(); return; }
         if (down) this.ctl.press(type); else this.ctl.release(type);
       }));
     }
+  }
+
+  // ---------------------------------------------------------------- replays
+  startReplay() {
+    const g = this.pendingReplay;
+    this.pendingReplay = null;
+    const rec = this.view.recorder;
+    const m = this.match;
+    if (!g || !rec || m.time - g.goalT > 8) return false;
+    const keyT = g.shotT != null && g.goalT - g.shotT < 3.5 ? g.shotT : g.goalT - 0.6;
+    const clip = rec.clip(g.goalT, keyT);
+    if (!clip) return false;
+    this.replay = new ReplayDirector(rec, clip, { goalT: g.goalT, shotT: g.shotT, subject: g.subject });
+    this.replay.team = g.team;
+    this.hud.setReplay(true, g.info, !this.input.touchMode);
+    this.hud.flashFade();
+    if (this.ctl) this.ctl.buffer.length = 0;
+    return true;
+  }
+
+  skipReplay() {
+    if (!this.replay) return;
+    this.endReplay();
+  }
+
+  endReplay() {
+    this.replay = null;
+    this.hud.setReplay(false);
+    this.hud.flashFade();
+    if (this.ctl) this.ctl.buffer.length = 0;
+    // straight on to the kick-off
+    if (this.match.phase === 'goal') this.match.requestSkip();
+  }
+
+  // one frame of the replay: slow-motion time, the drone camera and a few sound cues
+  replayFrame(dtReal) {
+    const r = this.replay;
+    const dt = this.paused ? 0 : dtReal;
+    for (const e of r.advance(dt)) {
+      if (e === 'shot') this.audio.play('shot', { gain: 0.8, rate: 0.72 });
+      if (e === 'goal') {
+        this.audio.play('net', { gain: 0.9, rate: 0.75 });
+        this.audio.play('cheer', { group: 'crowd', gain: 0.8 });
+        const f0 = r.frame();
+        if (f0) this.view.celebrate(f0.ball.x, f0.ball.z, r.team ?? 0, 0.8);
+      }
+    }
+    const f = r.frame();
+    if (!f) { this.endReplay(); return false; }
+    const cam = r.camera(f, dt);
+    this.view.render(1, dt, cam, { crowd: 0.6, replay: f });
+    this.view.markers.hideAll();
+    this.hud.updateReplay(r);
+    if (r.done) this.endReplay();
+    return true;
   }
 
   start() {
@@ -117,11 +181,26 @@ export class MatchSession {
       if (n) this.hud.notify(n[0], n[1]);
     });
     on('goal', (e) => { if (!menu && this.human && e.scorer === this.human) this.hud.notify('GOAL', 'good'); });
+    // queue a replay; it starts when the celebration ends (or is skipped)
+    on('goal', (e) => {
+      if (!this.replays || this.app.settings.replays === false) return;
+      const k = m.ball.lastKick;
+      const shotT = k && k.team === e.team && e.t - k.t < 4 ? k.t : null;
+      const who = e.ownGoal ? (k && k.team === e.team ? k.player : e.ownGoalBy) : e.scorer || (k && k.player);
+      const mins = Math.max(1, Math.ceil(m.clock / 60));
+      const name = e.ownGoal ? `Own goal${e.ownGoalBy ? ` (${e.ownGoalBy.name})` : ''}` : e.scorer ? e.scorer.name : '';
+      this.pendingReplay = {
+        goalT: e.t, shotT, subject: who ? m.players.indexOf(who) : -1, team: e.team,
+        info: `${m.teams[0].short} ${m.scoreline[0]} - ${m.scoreline[1]} ${m.teams[1].short}${name ? ` · ${name}` : ''} · ${mins}'`,
+      };
+    });
   }
 
   // one rendered frame
   frame(dtReal) {
     const m = this.match;
+    // a goal replay replaces the live view; the match stays frozen until it ends
+    if (this.replay && this.replayFrame(dtReal)) return;
     if (!this.paused && !this.ended) {
       if (this.human && this.ctl) {
         const ax = this.input.axes();
@@ -134,8 +213,18 @@ export class MatchSession {
       }
       this.acc += Math.min(dtReal, 0.1) * (this.cfg.timeScale || 1);
       let n = 0;
-      while (this.acc >= DT && n < MAX_STEPS) { m.step(DT); this.acc -= DT; n++; if (this.cfg.onStep) this.cfg.onStep(m); }
+      while (this.acc >= DT && n < MAX_STEPS) {
+        m.step(DT); this.acc -= DT; n++;
+        if (this.cfg.onStep) this.cfg.onStep(m);
+        // the celebration is over (or skipped): show the replay before the kick-off
+        if (this.pendingReplay && (m.phase !== 'goal' || m.phaseT > 2.3 || (m.skipRequested && m.phaseT > 0.5))) {
+          if (m.phase === 'goal' && this.startReplay()) { this.acc = 0; break; }
+          this.pendingReplay = null;
+        }
+      }
       if (n >= MAX_STEPS) this.acc = 0;
+      // a replay that started during these steps is drawn from its first frame
+      if (this.replay && this.replayFrame(0)) return;
       if (m.phase === 'fulltime' && !this.ended && m.phaseT > (this.cfg.mode === 'menu' ? 0 : 2.5)) {
         this.ended = true;
         if (this.cfg.onEnd) this.cfg.onEnd(this);
@@ -218,6 +307,11 @@ export class MatchSession {
   dispose() {
     for (const u of this.unsubs) u();
     this.unsubs = [];
+    // leaving mid-replay: the next match starts with a normal HUD
+    this.replay = null;
+    this.pendingReplay = null;
+    this.hud.setReplay(false);
+    this.hud.onSkipReplay = null;
     this.audio.stopCrowd();
     this.view.markers.hideAll();
   }

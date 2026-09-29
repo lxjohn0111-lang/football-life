@@ -39,6 +39,16 @@ export class Hud {
     this.arrow = el('div', 'hud-arrow hidden', this.root);
     this.banner = el('div', 'hud-banner hidden', this.root);
     this.fade = el('div', 'hud-fade', this.root);
+    // goal replay: cinema bars, a REPLAY tag, the scoreline and a Skip button
+    this.replayEl = el('div', 'hud-replay', this.root);
+    el('div', 'rp-bar rp-top', this.replayEl);
+    el('div', 'rp-bar rp-bot', this.replayEl);
+    el('div', 'rp-tag', this.replayEl, '<i></i>REPLAY');
+    this.replayInfo = el('div', 'rp-info', this.replayEl);
+    this.replayProg = el('i', '', el('div', 'rp-prog', this.replayEl));
+    this.replaySkip = el('button', 'rp-skip', this.replayEl, 'Skip replay');
+    this.replaySkip.addEventListener('pointerdown', (e) => e.stopPropagation());
+    this.replaySkip.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); if (this.onSkipReplay) this.onSkipReplay(); });
     this.radar = el('canvas', 'hud-radar', this.root);
     this.radar.width = 180; this.radar.height = 250;
     this.rctx = this.radar.getContext('2d');
@@ -65,6 +75,18 @@ export class Hud {
   }
 
   flashFade() { this.fade.classList.remove('on'); void this.fade.offsetWidth; this.fade.classList.add('on'); }
+
+  setReplay(on, info = '', keyboard = false) {
+    this.root.classList.toggle('replaying', on);
+    if (!on) return;
+    this.replayInfo.textContent = info;
+    this.replaySkip.innerHTML = keyboard ? 'Skip replay <b>Space / click</b>' : 'Skip replay ▸';
+    this.replayProg.style.width = '0%';
+  }
+
+  updateReplay(r) {
+    this.replayProg.style.width = `${Math.round(((r.t - r.t0) / Math.max(0.01, r.t1 - r.t0)) * 100)}%`;
+  }
 
   update(s) {
     const m = s.match;

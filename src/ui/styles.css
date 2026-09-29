@@ -193,6 +193,26 @@ html[data-style="neo"] .hud-poss-label { background: #00d65c; color: #000; borde
 .hud-fade { position: absolute; inset: 0; background: var(--paper); opacity: 0; }
 .hud-fade.on { animation: fadeFlash .45s ease-out; }
 @keyframes fadeFlash { 0% { opacity: 1; } 100% { opacity: 0; } }
+
+/* goal replay: everything else in the HUD steps aside for cinema bars */
+.hud-replay { display: none; position: absolute; inset: 0; pointer-events: none; color: #fff; }
+.hud.replaying .hud-replay { display: block; }
+.hud.replaying > :not(.hud-replay):not(.hud-fade) { display: none !important; }
+.rp-bar { position: absolute; left: 0; right: 0; height: 8.5vh; background: #0b0b0b; }
+.rp-top { top: 0; } .rp-bot { bottom: 0; }
+.rp-tag { position: absolute; top: calc(8.5vh + 12px); left: calc(16px + env(safe-area-inset-left, 0px)); font-weight: 900; font-size: 14px; letter-spacing: 4px; background: rgba(0,0,0,0.6); padding: 5px 12px 5px 10px; display: flex; align-items: center; gap: 8px; }
+.rp-tag i { width: 9px; height: 9px; border-radius: 50%; background: #ff3b3b; animation: rpDot 1s steps(2) infinite; }
+@keyframes rpDot { 50% { opacity: 0.15; } }
+.rp-info { position: absolute; bottom: calc(8.5vh + 14px); left: calc(16px + env(safe-area-inset-left, 0px)); font-weight: 800; font-size: 15px; text-shadow: 0 1px 3px rgba(0,0,0,0.8); max-width: 60vw; }
+.rp-prog { position: absolute; left: 0; right: 0; bottom: 8.5vh; height: 3px; background: rgba(255,255,255,0.18); }
+.rp-prog i { display: block; height: 100%; width: 0; background: #fff; }
+.rp-skip { position: absolute; bottom: calc(8.5vh + 10px); right: calc(16px + env(safe-area-inset-right, 0px)); pointer-events: auto; font: inherit; font-size: 14px; font-weight: 800; min-height: 44px; padding: 8px 16px; background: rgba(250,248,241,0.95); color: #161616; border: 2px solid #161616; border-radius: var(--radius); cursor: pointer; touch-action: manipulation; }
+.rp-skip b { font-size: 11px; font-weight: 700; opacity: 0.6; margin-left: 6px; }
+html[data-style="neo"] .rp-tag { background: #ff4fa3; color: #000; border: 2px solid #000; box-shadow: 3px 3px 0 #000; }
+html[data-style="neo"] .rp-skip { background: #ffe45c; border: 3px solid #000; box-shadow: 4px 4px 0 #000; border-radius: 0; text-transform: uppercase; }
+@media (max-height: 520px) { .rp-bar { height: 6vh; } .rp-tag { top: calc(6vh + 8px); } .rp-info { bottom: calc(6vh + 10px); font-size: 13px; } .rp-prog { bottom: 6vh; } .rp-skip { bottom: calc(6vh + 8px); } }
+@media (max-width: 600px) { .rp-info { font-size: 12px; max-width: 45vw; } .rp-skip { font-size: 13px; padding: 6px 12px; } .rp-skip b { display: none; } .rp-tag { font-size: 12px; letter-spacing: 3px; } }
+@media (prefers-reduced-motion: reduce) { .rp-tag i { animation: none; } }
 .pausebar { position: absolute; top: 0; left: 0; right: 0; }
 .lockmsg { font-size: 18px; font-weight: 700; }
 
