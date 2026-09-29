@@ -1,7 +1,7 @@
 // Outline checks: a line-up of players seen from 4 to 80 m, and a stand and houses from
 // afar. Hidden parts must not show their ink through the front, and far figures must
 // stay readable instead of turning into solid black. Screenshots go to tests/out/ink_*.png.
-// Usage: node tests/ink.mjs [classic|neo]
+// Usage: node tests/ink.mjs [classic|neo] [port]
 import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
 let chromium;
@@ -14,9 +14,11 @@ page.setDefaultTimeout(240000);
 const errors = [];
 page.on('pageerror', (e) => errors.push(e.message));
 const ev = (fn, a) => page.evaluate(fn, a);
-const snap = async (name) => { await ev(() => { const a = window.__ft; a.screens.clear(); a.hud.show(false); a.session.frame(0); }); await page.waitForTimeout(300); await page.screenshot({ path: `${OUT}/ink_${name}_${style}.png` }); };
+const snap = async (name) => { await ev(() => { const a = window.__ft; a.screens.clear(); a.hud.show(false); a.session.frame(0); }); await page.waitForTimeout(300); await page.screenshot({ path: `${OUT}/ink_${name}_${tag}.png` }); };
 
-await page.goto(`http://localhost:8080/index.html?auto=quick&home=ashford&away=harbour&style=${style}&seed=5&venue=town`);
+const port = process.argv[3] || 8080;
+const tag = port == 8080 ? style : `${style}_${port}`;
+await page.goto(`http://localhost:${port}/index.html?auto=quick&home=ashford&away=harbour&style=${style}&seed=5&venue=town`);
 await page.waitForTimeout(3000);
 await page.mouse.click(480, 270);
 await page.waitForTimeout(600);
@@ -37,6 +39,19 @@ for (const d of [4, 10, 20, 35, 60]) {
     a.debugCam = { pos: [25, 1.7, 0], look: [25 - d, 1.1, 0] };
   }, d);
   await snap(`players_${d}`);
+}
+// players standing one behind another, seen side-on: nothing behind may draw over the front
+for (const d of [3, 8, 20]) {
+  await ev((d) => {
+    const a = window.__ft;
+    window.__pick.forEach((p, i) => {
+      const k = i % 4;
+      p.pos.set(25 - d - k * 0.9, 0, (k % 2 ? 0.35 : -0.3) + (i < 4 ? 0 : 40)); p.prevPos.copy(p.pos); p.vel.set(0, 0, 0);
+      p.yaw = k * 0.8; p.prevYaw = p.yaw; p.action = null;
+    });
+    a.debugCam = { pos: [25, 1.6, 0], look: [25 - d - 0.9, 1.0, 0], fov: Math.max(20, 100 / d * 2.5) };
+  }, d);
+  await snap(`overlap_${d}`);
 }
 // a full line of scenery from far away
 await ev(() => { const a = window.__ft; a.debugCam = { pos: [0, 2.2, 24], look: [0, 6, -40] }; });

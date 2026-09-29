@@ -158,7 +158,7 @@ export class MatchSession {
     this.cam.fov = this.app.settings.fov;
     this.cam.bob = this.app.settings.bob ? 1 : 0;
     this.cam.shake = this.app.settings.shake ? 1 : 0;
-    const cam = this.app.debugCam ? { mode: 'free', pos: this.app.debugCam.pos, look: this.app.debugCam.look, fov: this.cam.fov } : this.cam;
+    const cam = this.app.debugCam ? { mode: 'free', pos: this.app.debugCam.pos, look: this.app.debugCam.look, fov: this.app.debugCam.fov || this.cam.fov } : this.cam;
     this.view.render(alpha, dtReal, cam, { crowd: this.excite * 0.5 });
     this.updateMarkers();
     if (this.cfg.mode !== 'menu') this.hud.update(this.hudState());

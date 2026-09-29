@@ -16,10 +16,7 @@ export const SU = {
   uTaperMin: { value: 0.3 },
   // fine-detail ink (window bars, roof tiles, seat rows, bracing) is only drawn this close
   uDetailDist: { value: 50 },
-  // edges that end up shorter than this many pixels are not drawn (far detail would
-  // otherwise turn into a smear of ink), and figures further away than uCreaseDist
-  // keep only their outline instead of every interior crease
-  uCullPx: { value: 3 },
+  // figures further away than this keep only their outline instead of every interior crease
   uCreaseDist: { value: 20 },
   uResolution: { value: new THREE.Vector2(1280, 720) },
   uTime: { value: 0 },
@@ -189,7 +186,6 @@ uniform float uMinWidth;
 uniform float uTaper;
 uniform float uTaperMin;
 uniform float uDetailDist;
-uniform float uCullPx;
 uniform float uCreaseDist;
 uniform vec2 uResolution;
 #include <common>
@@ -248,8 +244,6 @@ void main() {
   vec3 ndcStart = clipStart.xyz / clipStart.w;
   vec3 ndcEnd = clipEnd.xyz / clipEnd.w;
   float aspect = uResolution.x / uResolution.y;
-  // edges that are only a few pixels long are dropped
-  if (length((ndcEnd.xy - ndcStart.xy) * 0.5 * uResolution) < uCullPx) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); return; }
   vec2 dir = ndcEnd.xy - ndcStart.xy;
   dir.x *= aspect;
   dir = normalize(dir);
@@ -267,11 +261,16 @@ void main() {
   offset /= uResolution.y;
   offset *= clip.w;
   clip.xy += offset;
-  // pull the ink towards the eye by a small distance in world units (not in depth-buffer
-  // units, which grow with the square of the distance and let hidden parts show through)
-  clip.z += projectionMatrix[2][2] * (0.008 + 0.002 * clip.w);
-  gl_Position = clip;
+  // Depth: the ink is tested as if it sat a few centimetres nearer the eye along the same
+  // view ray (screen position unchanged). A fixed bias in depth-buffer units would grow
+  // with the square of the distance and let the outlines of parts behind (the far leg,
+  // a stand behind a wall) show through whatever is in front of them.
   vec4 mvPosition = (position.y < 0.5) ? start : end;
+  float wv = -mvPosition.z;
+  float pull = min(min(0.15, 0.02 + 0.0025 * wv), 0.5 * wv);
+  vec4 pz = projectionMatrix * vec4(mvPosition.xyz * ((wv - pull) / max(wv, 1e-4)), 1.0);
+  clip.z = (pz.z / pz.w) * clip.w;
+  gl_Position = clip;
   #include <fog_vertex>
 }
 `;
@@ -295,7 +294,7 @@ export function makeEdgeMaterial(o = {}) {
   const uniforms = THREE.UniformsUtils.merge([THREE.UniformsLib.fog]);
   Object.assign(uniforms, {
     uLineWidth: SU.uLineWidth, uMinWidth: SU.uMinWidth, uTaper: SU.uTaper, uTaperMin: SU.uTaperMin, uDetailDist: SU.uDetailDist, uCreaseDist: SU.uCreaseDist,
-    uCullPx: o.cull === false ? { value: 0 } : SU.uCullPx, uResolution: SU.uResolution, uParts: SU.uParts,
+    uResolution: SU.uResolution, uParts: SU.uParts,
     uTime: SU.uTime, uCrowd: SU.uCrowd,
     uNetA: SU.uNetA, uNetDA: SU.uNetDA, uNetB: SU.uNetB, uNetDB: SU.uNetDB,
     uColor: { value: palette[o.role ?? R.INK] },

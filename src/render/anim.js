@@ -57,19 +57,7 @@ class Foot {
   constructor() {
     this.pos = new THREE.Vector3(); this.plant = new THREE.Vector3(); this.from = new THREE.Vector3();
     this.swing = false; this.step = null; this.out = new THREE.Vector3();
-    this.sw = 0; // progress through the current swing (0..1)
-    this.prev = new THREE.Vector3(); this.off = new THREE.Vector3(); // pop absorber (see Animator.update)
   }
-}
-
-// blend part matrices (position + rotation) for the short crossfade between pose families
-const bp1 = V3(), bp2 = V3(), bs = V3(), bq1 = new THREE.Quaternion(), bq2 = new THREE.Quaternion(), bs2 = V3();
-function blendMatrix(target, from, w) {
-  from.decompose(bp1, bq1, bs);
-  target.decompose(bp2, bq2, bs2);
-  bp2.lerp(bp1, 1 - w);
-  bq1.slerp(bq2, w);
-  target.compose(bp2, bq1, bs2);
 }
 
 export class Animator {
@@ -87,16 +75,6 @@ export class Animator {
     this.yaw = 0;
     this.hands = [new THREE.Vector3(), new THREE.Vector3()];
     this.handW = 0;
-    // easing state: the gait itself is exact, but changes of pose (kicks, tackles, holding
-    // the ball) are eased in and out instead of snapping
-    this.sf = -1; // smoothed speed factor
-    this.yawA = null; this.yawRate = 0;
-    this.dPelvis = 0; this.roll = 0;
-    this.dHand = [new THREE.Vector3(), new THREE.Vector3()];
-    this.wB = 0; this.wL = new THREE.Vector3(); this.wR = new THREE.Vector3(); // world-space hands (ball in hands)
-    this.mode = 'up'; this.blendT = 1;
-    this.last = Array.from({ length: 13 }, () => new THREE.Matrix4());
-    this.snap = Array.from({ length: 13 }, () => new THREE.Matrix4());
   }
 
   reset() { this.ready = false; }
@@ -112,22 +90,10 @@ export class Animator {
     const left = tmp[1].set(Math.cos(yaw), 0, -Math.sin(yaw));
     const vx = p.vel.x, vz = p.vel.z;
     const speed = Math.hypot(vx, vz);
-    const kk = (rate) => 1 - Math.exp(-dt * rate);
-    // the body's response to speed (lean, arm swing, bounce) follows it smoothly
-    const sfRaw = clamp(speed / 7.5, 0, 1);
-    this.sf = this.sf < 0 ? sfRaw : lerp(this.sf, sfRaw, kk(7));
-    const sf = this.sf;
-    // how fast the body is turning, for leaning into corners
-    if (this.yawA == null) this.yawA = yaw;
-    let dyaw = yaw - this.yawA;
-    while (dyaw > Math.PI) dyaw -= Math.PI * 2; while (dyaw < -Math.PI) dyaw += Math.PI * 2;
-    this.yawA = yaw;
-    if (dt > 1e-4) this.yawRate = lerp(this.yawRate, clamp(dyaw / dt, -8, 8), kk(8));
+    const sf = clamp(speed / 7.5, 0, 1);
 
     if (!this.ready || this.lastRoot.distanceTo(root) > 2.5) {
       this.ready = true;
-      this.blendT = 1; this.mode = 'up';
-      for (const f of this.feet) { f.off.set(0, 0, 0); f.prev.set(1e5, 0, 0); }
       for (let i = 0; i < 2; i++) {
         const f = this.feet[i];
         f.pos.copy(root).addScaledVector(left, i === 0 ? 0.11 : -0.11);
@@ -168,7 +134,6 @@ export class Animator {
             if (ahead > 0.1 && ahead < 1.0) { tx = lerp(tx, bx - vdx * 0.12, 0.35); tz = lerp(tz, bz - vdz * 0.12, 0.35); }
           }
           const e = smooth(s);
-          f.sw = s;
           f.pos.set(lerp(f.from.x, tx, e), (0.09 + speed * 0.035) * Math.sin(Math.PI * Math.pow(s, 0.75)), lerp(f.from.z, tz, e));
         }
       } else {
@@ -198,13 +163,8 @@ export class Animator {
     // arm swing defaults (hand targets relative to shoulders, in body frame)
     const swing = Math.sin(g * Math.PI * 2);
     const armAmp = 0.08 + 0.3 * sf;
-    // the hand rises a little as it swings forward (elbow flexes)
-    const flexL = 0.09 * sf * Math.max(0, -swing), flexR = 0.09 * sf * Math.max(0, swing);
-    let handL = tmp[2].set(0.05, -0.5 + 0.18 * sf + flexL, -swing * armAmp);
-    let handR = tmp[3].set(-0.05, -0.5 + 0.18 * sf + flexR, swing * armAmp);
-    // pelvis dips on the swing-leg side and shifts over the stance leg
-    const pelvisRoll = 0.05 * sf * Math.sin(g * Math.PI * 2);
-    const pelvisY0 = pelvisY, base0 = tmp[14].copy(handL), base1 = tmp[15].copy(handR);
+    let handL = tmp[2].set(0.05, -0.5 + 0.18 * sf, -swing * armAmp);
+    let handR = tmp[3].set(-0.05, -0.5 + 0.18 * sf, swing * armAmp);
     let handsWorld = false; // hand targets given in world space
     const wHL = tmp[4], wHR = tmp[5];
     let headLook = null;
@@ -328,29 +288,6 @@ export class Animator {
       }
     }
 
-    // ---------------- feet: a foot that suddenly lands somewhere else (a re-plant after a sharp turn,
-    // the first step of a run, an action starting) slides there quickly instead of teleporting
-    const popThr = 0.14 + 22 * dt;
-    for (const f of this.feet) {
-      const jump = tmp[16].copy(f.out).sub(f.prev);
-      if (dt > 1e-4 && this.blendT >= 1 && jump.length() > popThr && jump.length() < 2.4) f.off.sub(jump);
-      f.off.multiplyScalar(Math.exp(-dt * 16));
-      f.out.add(f.off);
-      f.prev.copy(f.out);
-    }
-
-    // ---------------- ease action poses in and out (the gait and the feet are left exact)
-    this.dPelvis = lerp(this.dPelvis, pelvisY - pelvisY0, kk(14));
-    pelvisY = pelvisY0 + this.dPelvis;
-    const dT = tmp[16];
-    this.dHand[0].lerp(dT.copy(handL).sub(base0), kk(16)); handL.copy(base0).add(this.dHand[0]);
-    this.dHand[1].lerp(dT.copy(handR).sub(base1), kk(16)); handR.copy(base1).add(this.dHand[1]);
-    if (handsWorld) { this.wL.copy(wHL); this.wR.copy(wHR); }
-    this.wB = lerp(this.wB, handsWorld ? 1 : 0, kk(12));
-    // lean into turns; stumbling rocks the shoulders
-    torsoRoll += clamp(-this.yawRate * 0.03 * sf, -0.14, 0.14);
-    this.roll = lerp(this.roll, torsoRoll, kk(12));
-
     // ---------------- assemble matrices
     const Mx = this.m;
     if (fullBody === 'slide') this.poseSlide(p, a, root, yaw, Mx);
@@ -367,33 +304,17 @@ export class Animator {
       const bd = Math.hypot(bx, bz);
       this.headPitch = lerp(this.headPitch, clamp(Math.atan2(1.55 - ball.y, bd) * 0.6, -0.3, 0.5), 1 - Math.exp(-dt * 6));
       this.lean = lerp(this.lean, lean, 1 - Math.exp(-dt * 10));
-      // the pelvis shifts over the stance leg (not for the first-person body under the camera)
-      const proot = ctx.local ? root : tmp[17].copy(root).addScaledVector(left, 0.028 * sf * Math.sin(g * Math.PI * 2));
-      const useWorld = this.wB > 0.002;
-      this.poseUpright(p, proot, bodyYaw, pelvisY, this.lean + pitchExtra, twist, this.roll, handL, handR, useWorld ? this.wL : null, useWorld ? this.wR : null, Mx, ctx.local, pelvisRoll, this.wB);
+      this.poseUpright(p, root, bodyYaw, pelvisY, this.lean + pitchExtra, twist, torsoRoll, handL, handR, handsWorld ? wHL : null, handsWorld ? wHR : null, Mx, ctx.local);
     }
-    // a short crossfade when the body switches between pose families (running <-> slide, dive, fall)
-    const mode = fullBody || 'up';
-    if (mode !== this.mode) {
-      this.mode = mode;
-      for (let j = 0; j < 13; j++) this.snap[j].copy(this.last[j]);
-      this.blendT = 0;
-    }
-    if (this.blendT < 1) {
-      this.blendT = Math.min(1, this.blendT + dt / 0.14);
-      const w = smooth(this.blendT);
-      for (let j = 0; j < 13; j++) blendMatrix(Mx[j], this.snap[j], w);
-    }
-    for (let j = 0; j < 13; j++) this.last[j].copy(Mx[j]);
     return Mx;
   }
 
-  poseUpright(p, root, yaw, pelvisY, lean, twist, roll, handL, handR, wHL, wHR, Mx, local, pelvisRoll = 0, wBlend = 1) {
+  poseUpright(p, root, yaw, pelvisY, lean, twist, roll, handL, handR, wHL, wHR, Mx, local) {
     const pelvis = U.pelvis.set(root.x, pelvisY, root.z);
     const fwd = U.fwd.set(Math.sin(yaw), 0, Math.cos(yaw));
     const side = U.side.set(Math.cos(yaw), 0, -Math.sin(yaw));
     if (local) pelvis.addScaledVector(fwd, -0.02); // first person: head and torso are hidden, hips sit under the eyes
-    eA.set(0, yaw - twist * 0.4, pelvisRoll, 'YXZ');
+    eA.set(0, yaw - twist * 0.4, 0, 'YXZ');
     Mx[P.PELVIS].makeRotationFromEuler(eA).setPosition(pelvis);
     const pelvisM = Mx[P.PELVIS];
     // torso
@@ -415,10 +336,7 @@ export class Animator {
       limb(Mx[i === 0 ? P.THIGH_L : P.THIGH_R], hip, U.knee, fwd);
       limb(Mx[i === 0 ? P.SHIN_L : P.SHIN_R], U.knee, U.ankle, fwd);
       // boot: toe follows body yaw, pitches with the swing
-      // (toe drops as the foot lifts, then lifts again to land heel first)
-      const fo = this.feet[i];
-      const heel = fo.swing ? 0.28 * smooth((fo.sw - 0.72) / 0.28) : 0;
-      const pitch = clamp((U.ankle.y - DIM.ankle) * 1.2, 0, 0.6) * (fo.swing ? 1 : 0) - heel;
+      const pitch = clamp((U.ankle.y - DIM.ankle) * 1.2, 0, 0.6) * (this.feet[i].swing ? 1 : 0);
       eA.set(pitch, yaw, 0, 'YXZ');
       Mx[i === 0 ? P.BOOT_L : P.BOOT_R].makeRotationFromEuler(eA).setPosition(U.ankle);
     }
@@ -427,9 +345,9 @@ export class Animator {
     for (let i = 0; i < 2; i++) {
       const s = i === 0 ? 1 : -1;
       const sh = U.sh.set(s * DIM.shoulderW, 0.45, 0).applyMatrix4(torsoM);
-      const target = U.tgt.copy(i === 0 ? handL : handR).add(U.off.set(s * DIM.shoulderW, 0.45, 0)).applyMatrix4(torsoM);
-      // hands holding the ball ease over to their world-space targets
-      if (wHL) target.lerp(i === 0 ? wHL : wHR, wBlend);
+      let target;
+      if (wHL) target = U.tgt.copy(i === 0 ? wHL : wHR);
+      else target = U.tgt.copy(i === 0 ? handL : handR).add(U.off.set(s * DIM.shoulderW, 0.45, 0)).applyMatrix4(torsoM);
       const pole = U.pole2.copy(back).addScaledVector(side, s * 0.5);
       ik(sh, target, DIM.upper, DIM.fore, pole, U.elbow, U.hand);
       limb(Mx[i === 0 ? P.UARM_L : P.UARM_R], sh, U.elbow, fwd);
