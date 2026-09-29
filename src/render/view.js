@@ -92,7 +92,7 @@ export class SceneView {
     this.staticEdgeMat = makeEdgeMaterial({ crowd: true });
     this.casterMat = makeSolidMaterial({});
     this.casterEdgeMat = makeEdgeMaterial({});
-    this.netMat = makeEdgeMaterial({ net: true, role: R.NET, widthScale: 0.5 });
+    this.netMat = makeEdgeMaterial({ net: true, role: R.NET, widthScale: 0.5, cull: false });
     this.nets = new THREE.Mesh(buildNets(), this.netMat);
     this.nets.frustumCulled = false;
     this.scene.add(this.nets);
@@ -160,9 +160,14 @@ export class SceneView {
     const pr = this.pixelRatio || 1;
     SU.uLineWidth.value = st.lineWidth * pr;
     SU.uMinWidth.value = Math.min(st.lineWidth, 1.1) * pr;
-    SU.uTaper.value = st.name === 'neo' ? 16 : 40;
-    // thick neo ink crowds sooner, so its fine detail stops closer
-    SU.uDetailDist.value = st.name === 'neo' ? 38 : 60;
+    // ink thins out with distance (neo's thick lines sooner) and far detail drops out
+    // (neo's crowds sooner) so distant scenes stay clean instead of turning into ink
+    const neo = st.name === 'neo';
+    SU.uTaper.value = neo ? 10 : 30;
+    SU.uTaperMin.value = neo ? 0.25 : 0.4;
+    SU.uDetailDist.value = neo ? 34 : 45;
+    SU.uCreaseDist.value = neo ? 14 : 20;
+    SU.uCullPx.value = (neo ? 4.5 : 4) * pr;
   }
 
   // ------------------------------------------------------------- style
@@ -328,10 +333,10 @@ export class SceneView {
     cube.position.copy(c.position);
     cube.updateMatrixWorld();
     // lines keep their on-screen width: scale from screen pixels to face texels
-    const res = SU.uResolution.value, oldW = res.x, oldH = res.y, lw = SU.uLineWidth.value, mw = SU.uMinWidth.value;
+    const res = SU.uResolution.value, oldW = res.x, oldH = res.y, lw = SU.uLineWidth.value, mw = SU.uMinWidth.value, cp = SU.uCullPx.value;
     const k = w.size / 2 / ppr;
     res.set(w.size, w.size);
-    SU.uLineWidth.value = lw * k; SU.uMinWidth.value = mw * k;
+    SU.uLineWidth.value = lw * k; SU.uMinWidth.value = mw * k; SU.uCullPx.value = cp * k;
     // only faces that can appear in the view are rendered; shadows update once
     c.getWorldDirection(w.fwd);
     const corner = R * Math.sqrt(1 + 1 / (aspect * aspect));
@@ -353,7 +358,7 @@ export class SceneView {
     r.shadowMap.autoUpdate = auto;
     r.setRenderTarget(prevTarget);
     res.set(oldW, oldH);
-    SU.uLineWidth.value = lw; SU.uMinWidth.value = mw;
+    SU.uLineWidth.value = lw; SU.uMinWidth.value = mw; SU.uCullPx.value = cp;
     const u = w.mat.uniforms;
     u.uRot.value.setFromMatrix4(c.matrixWorld);
     u.uD.value = d; u.uR.value = R; u.uAspect.value = aspect;

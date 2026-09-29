@@ -306,51 +306,52 @@ html[data-touch="1"] .hud-arrow { opacity: 0.6; }
 }
 
 /* ------------------------------------------------------------- tutorial */
-.coach { position: absolute; top: calc(12px + env(safe-area-inset-top, 0px)); left: 50%; transform: translateX(-50%); width: min(560px, 92vw); background: var(--paper); border: var(--line) solid var(--ink); box-shadow: var(--shadow); padding: 9px 14px 10px; pointer-events: none; z-index: 5; }
-.coach-head { display: flex; align-items: center; gap: 10px; font-size: 11px; font-weight: 900; letter-spacing: 1.5px; }
-.coach-name { background: var(--ink); color: var(--paper); padding: 2px 6px; white-space: nowrap; }
-.coach-dots { display: flex; gap: 4px; flex: 1; flex-wrap: wrap; }
-.coach-dots i { width: 9px; height: 9px; border-radius: 50%; border: 1.5px solid var(--ink); transition: background .2s; }
+.coach { position: absolute; top: calc(12px + env(safe-area-inset-top, 0px)); left: 50%; transform: translateX(-50%); width: min(420px, 92vw); background: var(--paper); border: var(--line) solid var(--ink); box-shadow: var(--shadow); padding: 6px 10px 9px; pointer-events: none; z-index: 5; overflow: hidden; }
+.coach-main { display: flex; align-items: flex-start; gap: 8px; }
+.coach-txt { flex: 1; min-width: 0; }
+.coach-say { font-family: var(--display); font-size: 18px; font-weight: 700; line-height: 1.15; }
+.coach-say.pop { animation: coachPop .3s ease-out; }
+.coach-hint { font-size: 12px; margin-top: 1px; color: var(--muted); font-weight: 700; line-height: 1.2; }
+.coach-hint.empty { display: none; }
+.coach-skip { pointer-events: auto; font: inherit; font-size: 11px; font-weight: 700; padding: 4px 8px; border: 1px solid var(--ink); background: var(--paper); color: var(--ink); cursor: pointer; border-radius: var(--radius); touch-action: manipulation; white-space: nowrap; }
+.coach-foot { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+.coach-dots { display: flex; gap: 3px; flex: 1; }
+.coach-dots i { width: 7px; height: 7px; border-radius: 50%; border: 1.5px solid var(--ink); transition: background .2s; }
 .coach-dots i.done { background: var(--good); border-color: var(--good); }
 .coach-dots i.now { background: var(--ink); animation: dotPulse .8s ease-in-out infinite alternate; }
-.coach-stars { color: #a87a00; font-size: 14px; white-space: nowrap; }
-.coach-say { font-family: var(--display); font-size: 20px; font-weight: 700; margin-top: 6px; line-height: 1.2; }
-.coach-say.pop { animation: coachPop .3s ease-out; }
-.coach-hint { font-size: 13px; margin-top: 4px; color: var(--muted); font-weight: 700; }
-.coach-hint.empty { display: none; }
-.coach-foot { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
-.coach-bar { flex: 1; height: 5px; background: var(--barbg); overflow: hidden; }
+.coach-stars { color: #a87a00; font-size: 12px; font-weight: 900; white-space: nowrap; }
+.coach-bar { position: absolute; left: 0; right: 0; bottom: 0; height: 4px; background: var(--barbg); }
 .coach-bar i { display: block; height: 100%; background: var(--ink); }
-.coach-skip { pointer-events: auto; font: inherit; font-size: 12px; font-weight: 700; padding: 6px 10px; border: 1px solid var(--ink); background: var(--paper); color: var(--ink); cursor: pointer; border-radius: var(--radius); touch-action: manipulation; white-space: nowrap; }
 @keyframes coachPop { from { transform: translateY(4px) scale(0.96); opacity: 0.2; } to { transform: none; opacity: 1; } }
 @keyframes dotPulse { from { transform: scale(0.85); } to { transform: scale(1.15); } }
 html[data-style="neo"] .coach { background: #fff; border-width: 3px; box-shadow: 6px 6px 0 #000; }
-html[data-style="neo"] .coach-name { background: #ff4fa3; color: #000; border: 2px solid #000; }
 html[data-style="neo"] .coach-dots i { border-width: 2px; border-color: #000; }
 html[data-style="neo"] .coach-dots i.done { background: #00d65c; border-color: #000; }
 html[data-style="neo"] .coach-dots i.now { background: #ffe45c; }
 html[data-style="neo"] .coach-stars { color: #000; background: #ffe45c; border: 2px solid #000; padding: 0 5px; }
 html[data-style="neo"] .coach-say { font-family: var(--font); }
-html[data-style="neo"] .coach-bar { border: 2px solid #000; height: 9px; background: #fff; }
+html[data-style="neo"] .coach-bar { border-top: 2px solid #000; height: 8px; background: #fff; }
 html[data-style="neo"] .coach-bar i { background: #3ee0ff; }
-html[data-style="neo"] .coach-skip { border: 2px solid #000; box-shadow: 3px 3px 0 #000; text-transform: uppercase; background: #fff; }
+html[data-style="neo"] .coach-skip { border: 2px solid #000; box-shadow: 2px 2px 0 #000; text-transform: uppercase; background: #fff; }
+html[data-style="neo"] .coach { box-shadow: 4px 4px 0 #000; }
 /* the warm-up hides the match furniture; notes drop below the card */
 .hud.tut .hud-top, .hud.tut .hud-clock, .hud.tut .hud-phase, .hud.tut .hud-player, .hud.tut .hud-hint, .hud.tut .hud-arrow { display: none; }
 .tut-arrow { position: absolute; width: 0; height: 0; border-top: 16px solid transparent; border-bottom: 16px solid transparent; border-left: 30px solid #d9a400; filter: drop-shadow(0 0 1px #161616) drop-shadow(0 0 1px #161616); transform: translate(-50%,-50%) rotate(var(--rot, 0rad)); animation: tutArrow .6s ease-in-out infinite alternate; pointer-events: none; z-index: 4; }
 html[data-style="neo"] .tut-arrow { border-left-color: #ffe45c; filter: drop-shadow(0 0 0 #000) drop-shadow(2px 2px 0 #000); }
 @keyframes tutArrow { from { opacity: 0.55; } to { opacity: 1; } }
-.hud.tut .hud-notes { top: 150px; }
-html[data-touch="1"] .coach { top: calc(8px + env(safe-area-inset-top, 0px)); width: min(520px, calc(100vw - 210px)); }
+.hud.tut .hud-notes { top: 104px; }
+html[data-touch="1"] .coach { top: calc(6px + env(safe-area-inset-top, 0px)); width: min(340px, calc(100vw - 250px)); }
 @media (max-height: 520px) {
-  .coach { padding: 6px 12px 8px; }
-  .coach-say { font-size: 16px; margin-top: 4px; }
-  .coach-hint { font-size: 12px; margin-top: 2px; }
-  .coach-foot { margin-top: 5px; }
-  .hud.tut .hud-notes { top: 132px; }
+  .coach { padding: 4px 8px 8px; }
+  .coach-say { font-size: 15px; }
+  .coach-hint { font-size: 11px; margin-top: 0; }
+  .coach-foot { margin-top: 3px; }
+  .coach-skip { font-size: 10px; padding: 3px 6px; }
+  .hud.tut .hud-notes { top: 78px; }
 }
 @media (max-width: 600px) {
-  html[data-touch="1"] .coach { top: calc(62px + env(safe-area-inset-top, 0px)); width: calc(100vw - 20px); }
-  html[data-touch="1"] .hud.tut .hud-notes { top: calc(222px + env(safe-area-inset-top, 0px)); }
+  html[data-touch="1"] .coach { top: calc(8px + env(safe-area-inset-top, 0px)); width: calc(100vw - 120px); }
+  html[data-touch="1"] .hud.tut .hud-notes { top: calc(92px + env(safe-area-inset-top, 0px)); }
 }
 @media (prefers-reduced-motion: reduce) { .coach-say.pop, .coach-dots i.now { animation: none; } }
 .tut-badge { display: inline-block; font-size: 11px; font-weight: 900; letter-spacing: 2px; padding: 3px 8px; border: 1px solid var(--ink); margin-bottom: 8px; }

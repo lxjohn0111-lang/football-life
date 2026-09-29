@@ -24,15 +24,15 @@ export function markTutorial(how) {
 
 // say: what Coach Ada says; hint: [mouse & keyboard, touch]
 export const STEPS = [
-  { id: 'look', par: 6, cap: 12, say: 'Welcome, rookie! First things first: find the golden star.', hint: ['Move the mouse to look around', 'Drag on the right side of the screen to look around'] },
-  { id: 'move', par: 7, cap: 12, say: 'Sharp eyes! Now jog over to the glowing circle.', hint: ['W A S D to move', 'Left thumb: drag to move'] },
-  { id: 'sprint', par: 5, cap: 10, say: 'Feel the wind! Sprint to the next circle.', hint: ['Hold Shift while you move', 'Push the stick all the way out to sprint'] },
-  { id: 'ball', par: 5, cap: 10, say: 'Here\'s the ball. Just run into it to take it.', hint: ['Run into the ball', 'Run into the ball'] },
-  { id: 'dribble', par: 7, cap: 14, say: 'Green glow = YOUR ball. Dribble it through the gate!', hint: ['The ball sticks to your feet: just move', 'The ball sticks to your feet: just move'] },
-  { id: 'pass', par: 6, cap: 12, say: 'Jojo is calling for it! Look at him and pass.', hint: ['Look at Jojo (ring under him), then right-click', 'Look at Jojo (ring under him), then tap PASS'] },
-  { id: 'receive', par: 4, cap: 8, say: 'Here it comes back. Let it roll to your feet.', hint: ['Stand still or step towards it', 'Stand still or step towards it'] },
-  { id: 'shoot', par: 8, cap: 20, say: 'The fun part: score past Sleepy Sam!', hint: ['Aim with the crosshair, hold left mouse to power up, release', 'Aim by looking, hold SHOOT to power up, release'] },
-  { id: 'tackle', par: 6, cap: 14, say: 'Uh-oh, Big Barry nicked it. Win it back!', hint: ['Get close and press E to tackle', 'Get close and tap TACKLE'] },
+  { id: 'look', par: 6, cap: 12, say: 'Find the golden star', hint: ['Move the mouse', 'Drag on the right'] },
+  { id: 'move', par: 7, cap: 12, say: 'Run to the glowing circle', hint: ['W A S D', 'Drag with the left thumb'] },
+  { id: 'sprint', par: 5, cap: 10, say: 'Sprint to the next circle', hint: ['Hold Shift', 'Push the stick all the way'] },
+  { id: 'ball', par: 5, cap: 10, say: 'Run into the ball', hint: ['', ''] },
+  { id: 'dribble', par: 7, cap: 14, say: 'Dribble through the gate', hint: ['', ''] },
+  { id: 'pass', par: 6, cap: 12, say: 'Pass to Jojo', hint: ['Look at him, right-click', 'Look at him, tap PASS'] },
+  { id: 'receive', par: 4, cap: 8, say: 'Let it come to your feet', hint: ['', ''] },
+  { id: 'shoot', par: 8, cap: 20, say: 'Score past Sam!', hint: ['Hold left click, release', 'Hold SHOOT, release'] },
+  { id: 'tackle', par: 6, cap: 14, say: 'Win the ball back!', hint: ['Get close, press E', 'Get close, tap TACKLE'] },
 ];
 
 const PRAISE = ['Nice!', 'Lovely!', 'Class!', 'Sharp!', 'Easy!'];
@@ -86,7 +86,7 @@ export class Tutorial {
     m.phase = 'playing';
     m.clock = 0;
     // no restarts in a warm-up: fouls are only a warning, and the idle ball is never re-dropped
-    m.foul = () => this.note('Easy, tiger! That\'s a foul in a real match.', 'bad');
+    m.foul = () => this.note('Careful, that\'s a foul!', 'bad');
     m.checkDeadlock = () => {};
     const h = this.h = m.human;
     this.jojo = m.teams[0].players.find((p) => !p.isHuman);
@@ -184,7 +184,7 @@ export class Tutorial {
     this.ring.visible = false; this.star.visible = false; this.gate.visible = false;
     const st = this.current;
     if (!st) {
-      this.say = 'You\'re match-fit! See you on the pitch.';
+      this.say = 'Ready for the pitch!';
       this.endAt = this.t + 1.8;
       this.fx('finale');
       return;
@@ -279,9 +279,9 @@ export class Tutorial {
     if (star) this.stars++;
     this.results.push({ id: st.id, ok, star, t: this.stepT });
     const at = this.target && this.ring.visible ? this.target : this.h.pos;
-    this.note(line || (ok ? PRAISE[this.idx % PRAISE.length] : 'No worries, let\'s keep going!'), ok ? 'good' : '');
     this.fx('done', { ok, star, x: at.x, z: at.z, big: st.id === 'shoot' && ok });
-    this.say = ok ? (star ? `${line || 'Nice!'} That's a star!` : line || 'Nice!') : 'No worries, let\'s keep going!';
+    // the coach card shows the praise, so there is no separate on-screen note
+    this.say = ok ? `${line || PRAISE[this.idx % PRAISE.length]}${star ? ' ★' : ''}` : 'Keep going!';
     this.waitUntil = this.t + (st.id === 'shoot' && ok ? 1.6 : 0.9);
   }
 
@@ -325,7 +325,7 @@ export class Tutorial {
     const m = this.m, h = this.h, b = m.ball, now = m.time;
     this.t += dt;
     this.animate();
-    if (this.t >= TUTORIAL_LIMIT) { this.timeUp = true; this.say = 'Time\'s up, but you\'ve got the basics!'; this.finish(); return; }
+    if (this.t >= TUTORIAL_LIMIT) { this.timeUp = true; this.say = 'Time\'s up. Good effort!'; this.finish(); return; }
     if (this.endAt != null) { if (this.t >= this.endAt) this.finish(); return; }
     if (this.waitUntil != null) {
       if (this.t >= this.waitUntil) { this.waitUntil = null; this.next(); }
@@ -361,7 +361,7 @@ export class Tutorial {
         const k = b.lastKick;
         if (b.owner === this.jojo && k && k.player === h) { this.complete(true, 'Perfect pass!'); break; }
         if (b.owner === this.jojo) { this.jojo.gotAt = now; } // hold it until the human passes (ball placed on reset)
-        this.recoverBall(k && k.player === h ? 'Look right at Jojo and try again.' : null);
+        this.recoverBall(k && k.player === h ? 'Aim at Jojo' : null);
         break;
       }
       case 'receive':
@@ -375,7 +375,7 @@ export class Tutorial {
         if (inGoal && !this.resetAt) { this.fx('goal', { x: b.pos.x, z: b.pos.z }); this.complete(true, 'GOAL! Top bins!'); break; }
         if (!this.resetAt && this.shotAt) {
           const out = b.pos.x - BALL_R > PITCH.HL || Math.abs(b.pos.z) > PITCH.HW;
-          if (out || b.state === 'held' || now - this.shotAt > 3) { this.resetAt = now + 1.1; this.note(b.state === 'held' ? 'Saved! Sam woke up. Again!' : 'So close! Go again.', 'bad'); }
+          if (out || b.state === 'held' || now - this.shotAt > 3) { this.resetAt = now + 1.1; this.note(b.state === 'held' ? 'Saved! Again!' : 'So close! Again!', 'bad'); }
         }
         if (this.resetAt && now >= this.resetAt) { this.resetAt = null; this.shotAt = null; this.resetKeeper(); this.ballAtFeet(); }
         break;

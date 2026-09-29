@@ -237,7 +237,8 @@ export class CharacterBatch {
   }
 
   static solidMaterial() { return (CharacterBatch._sm ||= makeSolidMaterial({ parts: true, atlas: true })); }
-  static edgeMaterial() { return (CharacterBatch._em ||= makeEdgeMaterial({ parts: true })); }
+  // players' ink is a little finer than the scenery's: they carry far more edges each
+  static edgeMaterial() { return (CharacterBatch._em ||= makeEdgeMaterial({ parts: true, widthScale: 0.75 })); }
   static depthMaterial() { return (CharacterBatch._dm ||= makePartsDepthMaterial()); }
 
   setIdentity(row) { const o = row * 16; this.data.fill(0, o, o + 16); this.data[o] = this.data[o + 5] = this.data[o + 10] = this.data[o + 15] = 1; }

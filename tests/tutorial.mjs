@@ -182,12 +182,13 @@ for (const [w, h, tag] of [[844, 390, 'land'], [390, 844, 'port']]) {
   await page.waitForTimeout(2500);
   await page.tap('[data-act="start"]');
   await page.waitForTimeout(1200);
-  // advance to the dribble step so the card shows a mid-tutorial state
-  await page.evaluate(() => { const s = window.__ft.session, tut = s.tutorial, m = s.match; s.paused = true; for (let i = 0; i < 4 && !tut.done; i++) { tut.complete(true); for (let k = 0; k < 130; k++) { m.step(1 / 120); tut.step(); } } s.paused = false; });
+  // advance to the pass step so the card shows a mid-tutorial state with a touch hint
+  await page.evaluate(() => { const s = window.__ft.session, tut = s.tutorial, m = s.match; s.paused = true; for (let i = 0; i < 5 && !tut.done; i++) { tut.complete(true); for (let k = 0; k < 130; k++) { m.step(1 / 120); tut.step(); } } s.paused = false; });
   await page.waitForTimeout(1500);
   const card = await page.evaluate(() => { const c = document.querySelector('.coach'); const r = c.getBoundingClientRect(); const sk = document.querySelector('.coach-skip').getBoundingClientRect(); return { visible: !c.classList.contains('hidden'), say: document.querySelector('.coach-say').textContent, hint: document.querySelector('.coach-hint').textContent, top: r.top, bottom: r.bottom, left: r.left, right: r.right, skip: [sk.x + sk.width / 2, sk.y + sk.height / 2] }; });
-  check(`phone ${tag}: coach card visible with a touch hint`, card.visible && /move/.test(card.hint), JSON.stringify({ say: card.say, hint: card.hint }));
-  check(`phone ${tag}: card stays on screen`, card.left >= 0 && card.right <= w && card.top >= 0 && card.bottom < h * 0.6, JSON.stringify([card.left, card.top, card.right, card.bottom].map(Math.round)));
+  check(`phone ${tag}: coach card visible with a touch hint`, card.visible && /PASS/.test(card.hint) && card.say.length <= 30 && card.hint.length <= 30, JSON.stringify({ say: card.say, hint: card.hint }));
+  // short and small: the card never takes more than a quarter of the screen height
+  check(`phone ${tag}: card stays on screen and small`, card.left >= 0 && card.right <= w && card.top >= 0 && card.bottom < h * 0.25, JSON.stringify([card.left, card.top, card.right, card.bottom].map(Math.round)));
   await page.screenshot({ path: `${OUT}/tut_phone_${tag}_${style}.png` });
   const [sx, sy] = card.skip;
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: sx, y: sy, id: 1 }] });

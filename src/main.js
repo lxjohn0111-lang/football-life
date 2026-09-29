@@ -23,9 +23,9 @@ class App {
     st.textContent = css;
     document.head.appendChild(st);
     this.params = new URLSearchParams(location.search);
-    this.settings = loadSettings();
-    // phones and tablets: touch controls, and a lighter default quality on first run
+    // phones and tablets: touch controls, a lighter default quality and a higher look sensitivity on first run
     this.coarse = !!(window.matchMedia && matchMedia('(pointer: coarse)').matches);
+    this.settings = loadSettings(this.coarse);
     if (this.coarse && !hasSavedSettings()) this.settings.quality = 'medium';
     this.canvas = document.getElementById('game');
     this.uiRoot = document.getElementById('ui');

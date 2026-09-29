@@ -13,8 +13,14 @@ export const SU = {
   uLineWidth: { value: 1.2 },
   uMinWidth: { value: 1.0 },
   uTaper: { value: 22 },
+  uTaperMin: { value: 0.3 },
   // fine-detail ink (window bars, roof tiles, seat rows, bracing) is only drawn this close
   uDetailDist: { value: 50 },
+  // edges that end up shorter than this many pixels are not drawn (far detail would
+  // otherwise turn into a smear of ink), and figures further away than uCreaseDist
+  // keep only their outline instead of every interior crease
+  uCullPx: { value: 3 },
+  uCreaseDist: { value: 20 },
   uResolution: { value: new THREE.Vector2(1280, 720) },
   uTime: { value: 0 },
   uCrowd: { value: 0 },
@@ -181,7 +187,10 @@ uniform float uLineWidth;
 uniform float uWidthScale;
 uniform float uMinWidth;
 uniform float uTaper;
+uniform float uTaperMin;
 uniform float uDetailDist;
+uniform float uCullPx;
+uniform float uCreaseDist;
 uniform vec2 uResolution;
 #include <common>
 #include <fog_pars_vertex>
@@ -215,7 +224,8 @@ void main() {
   // iMeta.y: 1 = crease, +2 = fine detail that fades out with distance
   float detail = step(1.5, iMeta.y);
   float crease = iMeta.y - 2.0 * detail;
-  if (detail > 0.5 && length(0.5 * (wa.xyz + wb.xyz) - cameraPosition) > uDetailDist) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); return; }
+  float camDist = length(0.5 * (wa.xyz + wb.xyz) - cameraPosition);
+  if (detail > 0.5 && camDist > uDetailDist) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); return; }
   bool boundary = dot(n2, n2) < 0.01;
   if (!boundary) {
     vec3 V = 0.5 * (wa.xyz + wb.xyz) - cameraPosition;
@@ -224,6 +234,10 @@ void main() {
     bool silhouette = d1 * d2 <= 0.0;
     bool visibleCrease = crease > 0.5 && (d1 < 0.0 || d2 < 0.0);
     if (!silhouette && !visibleCrease) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); return; }
+#ifdef PARTS
+    // far figures keep their outline only, not the creases between their parts
+    if (!silhouette && camDist > uCreaseDist) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); return; }
+#endif
   }
   vec4 start = viewMatrix * wa;
   vec4 end = viewMatrix * wb;
@@ -234,6 +248,8 @@ void main() {
   vec3 ndcStart = clipStart.xyz / clipStart.w;
   vec3 ndcEnd = clipEnd.xyz / clipEnd.w;
   float aspect = uResolution.x / uResolution.y;
+  // edges that are only a few pixels long are dropped
+  if (length((ndcEnd.xy - ndcStart.xy) * 0.5 * uResolution) < uCullPx) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); return; }
   vec2 dir = ndcEnd.xy - ndcStart.xy;
   dir.x *= aspect;
   dir = normalize(dir);
@@ -246,12 +262,14 @@ void main() {
   vec4 clip = (position.y < 0.5) ? clipStart : clipEnd;
   // thick ink thins out with distance so far figures stay readable
   float wpx = uLineWidth * uWidthScale;
-  wpx = max(min(wpx, uMinWidth), wpx * clamp(uTaper / max(clip.w, 0.1), 0.35, 1.0));
+  wpx = max(min(wpx, uMinWidth), wpx * clamp(uTaper / max(clip.w, 0.1), uTaperMin, 1.0));
   offset *= wpx;
   offset /= uResolution.y;
   offset *= clip.w;
   clip.xy += offset;
-  clip.z -= 0.00025 * clip.w;
+  // pull the ink towards the eye by a small distance in world units (not in depth-buffer
+  // units, which grow with the square of the distance and let hidden parts show through)
+  clip.z += projectionMatrix[2][2] * (0.008 + 0.002 * clip.w);
   gl_Position = clip;
   vec4 mvPosition = (position.y < 0.5) ? start : end;
   #include <fog_vertex>
@@ -276,7 +294,8 @@ export function makeEdgeMaterial(o = {}) {
   if (o.net) defines.NET = '';
   const uniforms = THREE.UniformsUtils.merge([THREE.UniformsLib.fog]);
   Object.assign(uniforms, {
-    uLineWidth: SU.uLineWidth, uMinWidth: SU.uMinWidth, uTaper: SU.uTaper, uDetailDist: SU.uDetailDist, uResolution: SU.uResolution, uParts: SU.uParts,
+    uLineWidth: SU.uLineWidth, uMinWidth: SU.uMinWidth, uTaper: SU.uTaper, uTaperMin: SU.uTaperMin, uDetailDist: SU.uDetailDist, uCreaseDist: SU.uCreaseDist,
+    uCullPx: o.cull === false ? { value: 0 } : SU.uCullPx, uResolution: SU.uResolution, uParts: SU.uParts,
     uTime: SU.uTime, uCrowd: SU.uCrowd,
     uNetA: SU.uNetA, uNetDA: SU.uNetDA, uNetB: SU.uNetB, uNetDB: SU.uNetDB,
     uColor: { value: palette[o.role ?? R.INK] },

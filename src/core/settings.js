@@ -4,7 +4,9 @@ const STYLE_KEY = 'firsttouch.style';
 
 // Field of view is horizontal, in degrees: 60-200 (above 120 the wide projection is used).
 export const FOV_MIN = 60, FOV_MAX = 200;
-const SETTINGS_REV = 2; // rev 2: default FOV raised from 85 to 100
+// rev 2: default FOV raised from 85 to 100; rev 3: touch screens default to look sensitivity 2.25
+const SETTINGS_REV = 3;
+export const TOUCH_SENSITIVITY = 2.25;
 
 export const DEFAULT_SETTINGS = {
   rev: SETTINGS_REV,
@@ -18,18 +20,22 @@ export function hasSavedSettings() {
   try { return !!localStorage.getItem(KEY); } catch (e) { return false; }
 }
 
-export function loadSettings() {
+// `touch`: the device has a touch screen as its main pointer (phones and tablets)
+export function loadSettings(touch = false) {
+  const fresh = () => ({ ...DEFAULT_SETTINGS, ...(touch ? { sensitivity: TOUCH_SENSITIVITY } : {}) });
   try {
     const raw = localStorage.getItem(KEY);
-    if (!raw) return { ...DEFAULT_SETTINGS };
+    if (!raw) return fresh();
     const s = { ...DEFAULT_SETTINGS, ...JSON.parse(raw) };
     // players still on the old default field of view move to the new one
     if ((s.rev || 1) < 2 && s.fov === 85) s.fov = DEFAULT_SETTINGS.fov;
+    // touch players still on the old default look sensitivity move to the new one
+    if ((s.rev || 1) < 3 && touch && s.sensitivity === 1) s.sensitivity = TOUCH_SENSITIVITY;
     s.rev = SETTINGS_REV;
     s.fov = Math.min(FOV_MAX, Math.max(FOV_MIN, Number(s.fov) || DEFAULT_SETTINGS.fov));
     return s;
   } catch (e) {
-    return { ...DEFAULT_SETTINGS };
+    return fresh();
   }
 }
 export function saveSettings(s) {

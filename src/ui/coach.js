@@ -1,5 +1,6 @@
-// Coach Ada's card during the tutorial: what to do, how (for the current device),
-// progress dots, stars earned, a timer bar for the current step and a Skip button.
+// Coach Ada's card during the tutorial: a short instruction, one short hint for the
+// current device, progress dots, stars earned, a thin timer bar and a Skip button.
+// It is kept small so it never covers the play.
 const el = (tag, cls, parent, html) => {
   const e = document.createElement(tag);
   if (cls) e.className = cls;
@@ -11,19 +12,19 @@ const el = (tag, cls, parent, html) => {
 export class CoachCard {
   constructor(parent, total, onSkip) {
     this.root = el('div', 'coach hidden', parent);
-    const head = el('div', 'coach-head', this.root);
-    el('span', 'coach-name', head, 'COACH ADA');
-    this.dots = el('span', 'coach-dots', head);
-    for (let i = 0; i < total; i++) el('i', '', this.dots);
-    this.starsEl = el('span', 'coach-stars', head, '★ 0');
-    this.sayEl = el('div', 'coach-say', this.root);
-    this.hintEl = el('div', 'coach-hint', this.root);
-    const foot = el('div', 'coach-foot', this.root);
-    this.bar = el('div', 'coach-bar', foot);
-    this.barFill = el('i', '', this.bar);
-    this.skip = el('button', 'coach-skip', foot, 'Skip tutorial');
+    const main = el('div', 'coach-main', this.root);
+    const txt = el('div', 'coach-txt', main);
+    this.sayEl = el('div', 'coach-say', txt);
+    this.hintEl = el('div', 'coach-hint', txt);
+    this.skip = el('button', 'coach-skip', main, 'Skip tutorial');
     this.skip.addEventListener('click', (e) => { e.preventDefault(); onSkip(); });
     this.skip.addEventListener('pointerdown', (e) => e.stopPropagation());
+    const foot = el('div', 'coach-foot', this.root);
+    this.dots = el('span', 'coach-dots', foot);
+    for (let i = 0; i < total; i++) el('i', '', this.dots);
+    this.starsEl = el('span', 'coach-stars', foot, '★ 0');
+    this.bar = el('div', 'coach-bar', this.root);
+    this.barFill = el('i', '', this.bar);
     // pulsing arrow at the screen edge towards an objective that is out of view
     this.arrow = el('div', 'tut-arrow hidden', parent);
     this.last = {};
@@ -57,7 +58,7 @@ export class CoachCard {
       [...this.dots.children].forEach((d, i) => { d.className = i < s.doneCount ? 'done' : i === s.index ? 'now' : ''; });
     }
     if (s.stars !== L.stars) this.starsEl.textContent = `★ ${s.stars}`;
-    if (s.keyboard !== L.keyboard) this.skip.textContent = s.keyboard ? 'Skip tutorial (Esc)' : 'Skip tutorial';
+    if (s.keyboard !== L.keyboard) this.skip.textContent = s.keyboard ? 'Skip (Esc)' : 'Skip';
     this.barFill.style.width = `${Math.round(Math.max(0, Math.min(1, s.frac)) * 100)}%`;
     this.last = { ...s };
   }
