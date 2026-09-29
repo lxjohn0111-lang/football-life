@@ -44,7 +44,8 @@ const fits = (page, sel) => page.evaluate((sel) => { const e = document.querySel
   await page.screenshot({ path: `${OUT}/m_tap_land.png` });
   check('"Tap to play" shown', await page.evaluate(() => /Tap to play/.test(document.querySelector('.screens').textContent)));
   await page.tap('.screen');
-  await page.waitForTimeout(800);
+  // the controls appear on the next rendered frame (slow under a software renderer)
+  await page.waitForFunction(() => !window.__ft.paused && !document.querySelector('.touch').classList.contains('hidden'), null, { timeout: 20000 }).catch(() => {});
   const st = await page.evaluate(() => { const a = window.__ft; return { paused: a.paused, locked: a.input.locked, overlay: !document.querySelector('.touch').classList.contains('hidden'), phase: a.session.match.phase }; });
   check('tap starts play without pointer lock, controls visible', !st.paused && !st.locked && st.overlay, JSON.stringify(st));
   // let kick-off happen, then control the world for each check
@@ -104,12 +105,13 @@ const fits = (page, sel) => page.evaluate((sel) => { const e = document.querySel
   await page.waitForTimeout(300);
   await page.screenshot({ path: `${OUT}/m_ball_land.png` });
   const [ax, ay] = await center(page, '.tc-a');
+  const kicked = (kind) => page.waitForFunction((kind) => window.__kicks.includes(kind), kind, { timeout: 20000 }).catch(() => {});
   await touch('touchStart', [[ax, ay, 5]]); await page.waitForTimeout(350); await touch('touchEnd', []);
-  await page.waitForTimeout(900);
+  await kicked('shot');
   const [bx, by] = await center(page, '.tc-b');
   await giveBall();
   await touch('touchStart', [[bx, by, 6]]); await page.waitForTimeout(60); await touch('touchEnd', []);
-  await page.waitForTimeout(900);
+  await kicked('pass');
   const kicks = await page.evaluate(() => window.__kicks.concat(['phase:' + window.__phase]));
   check('SHOOT then PASS buttons kick the ball', kicks.includes('shot') && kicks.includes('pass'), JSON.stringify(kicks));
 

@@ -322,6 +322,8 @@ class App {
       this.view.venueKey = null;
       const cur = this.session || this.menuSession;
       if (cur) this.view.setVenue(cur.cfg.venue, cur.cfg.venueOpts || {});
+      // players are built at the quality's level of detail too
+      if (this.view.match) this.view.rebuildCharacters();
     }
     if (!saveSettings(s)) this.screens.toast('Settings could not be saved (storage unavailable).', true);
   }

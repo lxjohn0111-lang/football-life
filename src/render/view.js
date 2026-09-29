@@ -161,6 +161,8 @@ export class SceneView {
     SU.uLineWidth.value = st.lineWidth * pr;
     SU.uMinWidth.value = Math.min(st.lineWidth, 1.1) * pr;
     SU.uTaper.value = st.name === 'neo' ? 16 : 40;
+    // thick neo ink crowds sooner, so its fine detail stops closer
+    SU.uDetailDist.value = st.name === 'neo' ? 38 : 60;
   }
 
   // ------------------------------------------------------------- style
@@ -214,6 +216,7 @@ export class SceneView {
   setMatch(match, colours) {
     this.match = match;
     if (colours) setMatchColours(colours.kits, colours.human);
+    this.kits = colours && colours.kits ? colours.kits : null;
     this.rebuildCharacters();
     this.burst.clear();
     this.netState.forEach((n) => { n.amp = 0; n.t = 9; });
@@ -222,7 +225,7 @@ export class SceneView {
 
   rebuildCharacters() {
     if (this.batch) { this.scene.remove(this.batch.mesh, this.batch.edges); this.batch.dispose(); }
-    this.batch = new CharacterBatch(this.match.players, this.atlas);
+    this.batch = new CharacterBatch(this.match.players, this.atlas, { kits: this.kits, quality: this.quality });
     this.scene.add(this.batch.mesh, this.batch.edges);
     this.animators = this.match.players.map((p) => new Animator(p));
   }

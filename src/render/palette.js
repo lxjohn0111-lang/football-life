@@ -17,8 +17,10 @@ export const R = {
   SHIRT_1: 45, SHORTS_1: 46, SOCKS_1: 47, GK_1: 48, NUM_1: 49,
   BALL_W: 50, BALL_B: 51, GLOVE: 52, CONE: 53, TARGET: 54, CLOUD: 55,
   SKY_TOP: 56, SKY_BOTTOM: 57, GOLD: 58, EYE: 59, GKX_0: 60, GKX_1: 61, INK: 62, MARKER: 63,
+  // kit trim (collar, cuffs, stripes) in each club's second colour, and scenery details
+  TRIM_0: 64, TRIM_1: 65, GLASS: 66, DOOR: 67, BRICK: 68, TREE_2: 69, HEDGE: 70, FLOWER: 71,
 };
-export const NUM_ROLES = 64;
+export const NUM_ROLES = 72;
 
 // the shared role colours
 export const palette = Array.from({ length: NUM_ROLES }, () => new THREE.Color(1, 1, 1));
@@ -41,6 +43,7 @@ const CLASSIC = {
     HAIR_1: '#d9d4cc', HAIR_2: '#bdb7ae',
     BOOT: '#3a3a3a', BALL_W: '#ffffff', BALL_B: '#1b1b1b', GLOVE: '#f5f5f0', CONE: '#f2c9a0', TARGET: '#f0b8b0',
     CLOUD: '#ffffff', SKY_TOP: '#f4f3ee', SKY_BOTTOM: '#f2f1ea', GOLD: '#eadcaa', EYE: '#1b1b1b', INK: '#161616', MARKER: '#222222',
+    GLASS: '#e3eaee', DOOR: '#e6ddd0', BRICK: '#ece4d8', TREE_2: '#d8e4cc', HEDGE: '#dce7d1', FLOWER: '#f3dcdc',
   },
   kitMix: 0.42, kitSat: 0.75, skinMix: 0.55,
 };
@@ -61,6 +64,7 @@ const NEO = {
     HAIR_1: '#2b1d14', HAIR_2: '#f2c14e',
     BOOT: '#101010', BALL_W: '#ffffff', BALL_B: '#101010', GLOVE: '#fff45c', CONE: '#ff7a1a', TARGET: '#ff3d6e',
     CLOUD: '#ffffff', SKY_TOP: '#1fb8ff', SKY_BOTTOM: '#c4f4ff', GOLD: '#ffc81a', EYE: '#000000', INK: '#000000', MARKER: '#ff3dcf',
+    GLASS: '#3ee0ff', DOOR: '#7b4dff', BRICK: '#ff8a4c', TREE_2: '#12a954', HEDGE: '#1bbd57', FLOWER: '#ff5c8a',
   },
   kitMix: 0, kitSat: 1.15, skinMix: 0,
 };
@@ -114,6 +118,10 @@ function applyMatchColours() {
     palette[R.GK_0 + base].copy(treat(kit.gk, st, mix, sat));
     palette[R.NUM_0 + base].copy(treat(kit.number, st, st.name === 'classic' ? 0 : 0, 1));
     palette[(t === 0 ? R.GKX_0 : R.GKX_1)].copy(treat(kit.gkx, st, mix * 0.6, sat));
+    // trim: the club's second colour, or black/white if it would vanish against the shirt
+    const trim = kit.trim || kit.number || '#ffffff';
+    const tc = colourDistance(trim, kit.shirt) < 0.3 ? (colourDistance(kit.shirt, '#ffffff') > 0.6 ? '#ffffff' : '#141414') : trim;
+    palette[t === 0 ? R.TRIM_0 : R.TRIM_1].copy(treat(tc, st, mix, sat));
   }
   // numbers must contrast with the shirt
   for (let t = 0; t < 2; t++) {
@@ -137,13 +145,17 @@ export function colourDistance(a, b) {
 }
 
 // Choose kits that keep both teams (and keepers) clearly distinct
+// shirt design from the club crest: stripes, a chest band, halves, contrasting sleeves or plain
+const KIT_PATTERNS = { stripes: 'stripes', band: 'band', half: 'halves', quarters: 'sleeves', chevron: 'plain' };
+export function kitPattern(club) { return (club && club.crest && KIT_PATTERNS[club.crest.pattern]) || 'plain'; }
+
 export function resolveKits(homeClub, awayClub) {
-  const home = { shirt: homeClub.colors[0], shorts: homeClub.colors[2] || homeClub.colors[1], socks: homeClub.colors[0], number: homeClub.colors[1] };
-  let away = { shirt: awayClub.colors[0], shorts: awayClub.colors[2] || awayClub.colors[1], socks: awayClub.colors[0], number: awayClub.colors[1] };
+  const home = { shirt: homeClub.colors[0], shorts: homeClub.colors[2] || homeClub.colors[1], socks: homeClub.colors[0], number: homeClub.colors[1], pattern: kitPattern(homeClub) };
+  let away = { shirt: awayClub.colors[0], shorts: awayClub.colors[2] || awayClub.colors[1], socks: awayClub.colors[0], number: awayClub.colors[1], pattern: kitPattern(awayClub) };
   if (colourDistance(home.shirt, away.shirt) < 0.55) {
     // away side switches to its change kit
-    away = { shirt: awayClub.colors[1], shorts: awayClub.colors[0], socks: awayClub.colors[1], number: awayClub.colors[0] };
-    if (colourDistance(home.shirt, away.shirt) < 0.55) away = { shirt: '#f4f4f4', shorts: '#222222', socks: '#f4f4f4', number: '#111111' };
+    away = { shirt: awayClub.colors[1], shorts: awayClub.colors[0], socks: awayClub.colors[1], number: awayClub.colors[0], pattern: kitPattern(awayClub) };
+    if (colourDistance(home.shirt, away.shirt) < 0.55) away = { shirt: '#f4f4f4', shorts: '#222222', socks: '#f4f4f4', number: '#111111', pattern: 'plain' };
   }
   const gkOptions = ['#f2c500', '#22c55e', '#9333ea', '#f97316', '#0ea5e9', '#ec4899', '#111827'];
   const pickGK = (avoid) => {

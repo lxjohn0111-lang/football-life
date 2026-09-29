@@ -2,7 +2,7 @@
 // distinct locations. All static geometry is merged into one solid mesh and one
 // edge batch (roles give each part its colour); crowds animate in the shader.
 import * as THREE from 'three';
-import { GeoBuilder, tBox, tSphere, tIco, tFrom } from './geometry.js';
+import { GeoBuilder, tBox, tSphere, tIco, tCone, tFrom } from './geometry.js';
 import { R } from './palette.js';
 import { PITCH, GOAL, AREA } from '../sim/constants.js';
 
@@ -17,6 +17,9 @@ export const VENUES = {
 
 // deterministic pseudo random for decoration
 function rnd(seed) { let s = seed >>> 0 || 1; return () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; }; }
+// a child generator for a detail whose piece count depends on quality: it takes one
+// draw from the parent, so the rest of the venue is laid out the same at every quality
+const fork = (rand) => rnd(Math.floor(rand() * 4294967296));
 
 const LINE_W = 0.1;
 const LY = 0.012;
@@ -161,13 +164,28 @@ class Frame {
 const CROWD_ROLES = [R.CROWD_1, R.CROWD_1, R.CROWD_1, R.CROWD_2, R.CROWD_3, R.CROWD_4, R.CROWD_1, R.CROWD_3];
 const SKINS = [R.SKIN_1, R.SKIN_2, R.SKIN_3];
 
-function person(f, lx, y, lz, rand, seated = true) {
+// A fan: body, head, and on higher quality shoulders and arms (some raised). Some
+// wear a scarf in their club's colour or a bobble hat. Everyone bobs with the crowd.
+function person(f, lx, y, lz, rand, seated = true, arms = true) {
   const role = CROWD_ROLES[Math.floor(rand() * CROWD_ROLES.length)];
   const bob = [rand(), 1];
   const h = seated ? 0.46 : 0.62;
-  f.box(role, 0.44, h, 0.28, lx, y + h / 2, lz, { bob });
+  const team = rand() < 0.5 ? R.CROWD_1 : R.CROWD_2;
+  f.box(role, 0.42, h, 0.27, lx, y + h / 2, lz, { bob });
   const [x, z] = f.w(lx, lz);
-  f.b.add(tIco(0.14, 0), GeoBuilder.mat(x, y + h + 0.16, z, 0, rand() * 6, 0), SKINS[Math.floor(rand() * 3)], { bob });
+  const skin = SKINS[Math.floor(rand() * 3)];
+  f.b.add(tIco(0.135, 0), GeoBuilder.mat(x, y + h + 0.16, z, 0, rand() * 6, 0), skin, { bob });
+  // arms, scarves and hats are fine detail: their ink fades out in the far stands
+  if (arms) {
+    const up = rand() < 0.14;
+    for (const s of [-1, 1]) {
+      if (up) f.box(role, 0.1, 0.42, 0.11, lx + s * 0.25, y + h + 0.18, lz, { bob, rz: s * 0.25, detail: true });
+      else f.box(role, 0.1, h * 0.8, 0.12, lx + s * 0.26, y + h * 0.56, lz - 0.02, { bob, detail: true });
+    }
+  }
+  const extra = rand();
+  if (extra < 0.18) f.box(team, 0.46, 0.09, 0.3, lx, y + h - 0.02, lz, { bob, detail: true });
+  else if (extra < 0.3) { const [hx, hz] = f.w(lx, lz); f.b.add(tCone(0.12, 0.2, 6), GeoBuilder.mat(hx, y + h + 0.3, hz), team, { bob, detail: true }); }
 }
 
 // A tiered stand. Local frame: x along the stand, z away from the pitch.
@@ -176,17 +194,40 @@ function stand(b, o, rand, stats) {
   const rows = o.rows, rd = o.rowDepth || 0.85, rh = o.rowHeight || 0.42, base = o.base || 0.6, len = o.len;
   const z0 = o.z0 || 0;
   const roles = o.roles || [R.STAND_A, R.STAND_B];
-  // front wall
+  // front wall with a railing on top
   f.box(o.wallRole || R.CONCRETE, len, base, 0.3, 0, base / 2, z0 - 0.15);
+  const posts = Math.max(2, Math.round(len / 2.2));
+  b.fine(() => {
+    for (let i = 0; i <= posts; i++) f.cyl(R.METAL, 0.03, 0.03, 0.95, 5, -len / 2 + (len * i) / posts, base + 0.47, z0 - 0.15);
+    const [ax, az] = f.w(-len / 2, z0 - 0.15), [bx, bz] = f.w(len / 2, z0 - 0.15);
+    b.between(R.METAL, 0.035, ax, base + 0.95, az, bx, base + 0.95, bz, 6); b.line(ax, base + 0.5, az, bx, base + 0.5, bz);
+  });
+  // aisles with steps split the rows of seats into blocks
+  const nAisle = Math.max(1, Math.round(len / 13));
+  const aisles = [];
+  for (let k = 1; k < nAisle + 1; k++) aisles.push(-len / 2 + (len * k) / (nAisle + 1));
+  const aw = 1.1;
   for (let i = 0; i < rows; i++) {
     const y = base + i * rh;
-    f.box(roles[Math.floor(i / (o.band || 2)) % roles.length], len, rh, rd, 0, y + rh / 2, z0 + rd * (i + 0.5));
+    const tread = roles[Math.floor(i / (o.band || 2)) % roles.length];
+    const seatRole = roles[(Math.floor(i / (o.band || 2)) + 1) % roles.length];
+    f.box(tread, len, rh, rd, 0, y + rh / 2, z0 + rd * (i + 0.5));
+    // seat backs along the row, broken at each aisle, and half-height steps in the aisles
+    const edges = [-len / 2, ...aisles.flatMap((ax) => [ax - aw / 2, ax + aw / 2]), len / 2];
+    b.fine(() => {
+      for (let k = 0; k < edges.length; k += 2) {
+        const a0 = edges[k] + 0.1, a1 = edges[k + 1] - 0.1;
+        if (a1 - a0 > 0.4) f.box(seatRole, a1 - a0, 0.3, 0.07, (a0 + a1) / 2, y + rh + 0.15, z0 + rd * (i + 1) - 0.1);
+      }
+      for (const ax of aisles) f.box(R.CONCRETE, aw - 0.1, rh / 2, rd / 2, ax, y + rh + rh / 4, z0 + rd * (i + 0.25));
+    });
     // seats on this row (spectators are sampled later to a fixed budget)
     if (o.density > 0) {
       const n = Math.floor(len / 0.62);
       for (let k = 0; k < n; k++) {
         const lx = -len / 2 + 0.31 + k * 0.62 + (rand() - 0.5) * 0.1;
-        stats.seats.push({ f, lx, y: y + rh, lz: z0 + rd * (i + 0.5) + 0.05, w: o.density, seated: true });
+        if (aisles.some((ax) => Math.abs(lx - ax) < aw / 2 + 0.15)) continue; // nobody sits on the steps
+        stats.seats.push({ f, lx, y: y + rh, lz: z0 + rd * (i + 0.5) + 0.05, w: o.density, seated: true, row: i + (o.z0 ? 20 : 0) });
       }
     }
   }
@@ -205,6 +246,32 @@ function stand(b, o, rand, stats) {
     }
     f.box(o.roofRole || R.ROOF, len + 1.2, 0.35, depth, 0, rh2, back - depth / 2 + 0.6, { rx: -0.07 });
     f.box(R.METAL, len + 1.2, 0.5, 0.25, 0, rh2 - 0.3, back - depth + 0.7);
+    // roof trusses: a braced triangle over every column, and a purlin under the roof
+    b.detail = true;
+    const front = back - depth + 0.7;
+    const slope = Math.tan(0.07);
+    for (let i = 0; i <= ncol; i++) {
+      const lx = -len / 2 + (len * i) / ncol;
+      const [cx, cz] = f.w(lx, back + 0.1), [fx, fz] = f.w(lx, front);
+      const yTop = rh2 - 0.2, yFront = rh2 - 0.2 + (back + 0.1 - front) * -slope;
+      b.between(R.METAL, 0.07, cx, yTop, cz, fx, yFront, fz, 5);
+      const n = 6;
+      for (let k = 0; k < n; k++) {
+        const t0 = k / n, t1 = (k + 1) / n;
+        const [ax, az] = f.w(lx, back + 0.1 + (front - back - 0.1) * t0), [bx2, bz2] = f.w(lx, back + 0.1 + (front - back - 0.1) * t1);
+        const y0 = yTop + (yFront - yTop) * t0, y1 = yTop + (yFront - yTop) * t1;
+        const drop = 1.1 * (1 - t0) + 0.2, drop1 = 1.1 * (1 - t1) + 0.2;
+        b.line(ax, y0, az, bx2, y1 - drop1, bz2);
+        b.line(ax, y0 - drop, az, bx2, y1 - drop1, bz2);
+      }
+    }
+    for (const t of [0.35, 0.7]) {
+      const lzp = back + 0.1 + (front - back - 0.1) * t;
+      const [ax, az] = f.w(-len / 2, lzp), [bx2, bz2] = f.w(len / 2, lzp);
+      const yp = rh2 - 0.25 + (back + 0.1 - lzp) * -slope;
+      b.between(R.METAL, 0.05, ax, yp, az, bx2, yp, bz2, 5);
+    }
+    b.detail = false;
   }
   if (o.banners) {
     const nb = Math.max(1, Math.floor(len / 10));
@@ -216,13 +283,47 @@ function stand(b, o, rand, stats) {
   return { top, back };
 }
 
-function floodlight(b, x, z, h, aimY) {
-  b.cyl(R.METAL, 0.22, 0.32, h, 8, x, h / 2, z);
+// lattice floodlight tower: four tapering legs with cross bracing, a ladder, a
+// platform with a railing and a head of round lamps aimed at the pitch
+function floodlight(b, x, z, h) {
   const ry = Math.atan2(-x, -z);
   const f = new Frame(b, x, z, ry);
-  f.box(R.METAL, 3.6, 2.4, 0.3, 0, h + 1.2, 0.2, { rx: 0.35 });
-  for (let i = 0; i < 3; i++) for (let j = 0; j < 2; j++) f.box(R.LAMP, 0.9, 0.7, 0.2, -1.15 + i * 1.15, h + 0.65 + j * 1.1, -0.05, { rx: 0.35 });
-  void aimY;
+  const r0 = 1.0, r1 = 0.4;
+  const corner = (sx, sz, t) => { const r = r0 + (r1 - r0) * t; return f.w(sx * r, sz * r); };
+  const C = [[-1, -1], [1, -1], [1, 1], [-1, 1]];
+  for (const [sx, sz] of C) { const [ax, az] = corner(sx, sz, 0), [bx, bz] = corner(sx, sz, 1); b.between(R.METAL, 0.07, ax, 0, az, bx, h, bz, 6); }
+  // zigzag (Warren) bracing on each face: light enough to read as a lattice from afar
+  b.detail = true;
+  const panels = Math.round(h / 3);
+  for (let k = 0; k < panels; k++) {
+    const t0 = k / panels, t1 = (k + 1) / panels;
+    for (let c = 0; c < 4; c++) {
+      const [sa, za] = C[c], [sb, zb] = C[(c + 1) % 4];
+      const [a0x, a0z] = corner(sa, za, t0), [b0x, b0z] = corner(sb, zb, t0), [a1x, a1z] = corner(sa, za, t1), [b1x, b1z] = corner(sb, zb, t1);
+      if (k % 2) b.line(a0x, h * t0, a0z, b1x, h * t1, b1z); else b.line(b0x, h * t0, b0z, a1x, h * t1, a1z);
+      if (k % 2) b.line(a1x, h * t1, a1z, b1x, h * t1, b1z);
+    }
+  }
+  // ladder up the back
+  for (const dx of [-0.2, 0.2]) { const [ax, az] = f.w(dx, 1.05), [bx, bz] = f.w(dx, 0.45); b.line(ax, 0.2, az, bx, h, bz); }
+  for (let k = 1; k < h / 0.6; k++) { const t = (k * 0.6) / h, lz = 1.05 + (0.45 - 1.05) * t; const [ax, az] = f.w(-0.2, lz), [bx, bz] = f.w(0.2, lz); b.line(ax, k * 0.6, az, bx, k * 0.6, bz); }
+  // platform and railing
+  f.box(R.METAL, 3.2, 0.15, 1.6, 0, h, 0);
+  for (const [px, pz] of [[-1.6, -0.8], [1.6, -0.8], [1.6, 0.8], [-1.6, 0.8]]) f.cyl(R.METAL, 0.03, 0.03, 1.0, 5, px, h + 0.5, pz);
+  for (const [ax0, az0, bx0, bz0] of [[-1.6, -0.8, 1.6, -0.8], [1.6, -0.8, 1.6, 0.8], [1.6, 0.8, -1.6, 0.8], [-1.6, 0.8, -1.6, -0.8]]) {
+    const [ax, az] = f.w(ax0, az0), [bx, bz] = f.w(bx0, bz0);
+    b.line(ax, h + 1.0, az, bx, h + 1.0, bz);
+  }
+  b.detail = false;
+  // head: frame tilted towards the pitch with a grid of round lamps
+  f.box(R.METAL, 4.2, 2.8, 0.22, 0, h + 2.4, 0.3, { rx: 0.35 });
+  const tilt = 0.35;
+  for (let i = 0; i < 4; i++) for (let j = 0; j < 3; j++) {
+    const lx = -1.5 + i * 1.0, ly = -0.9 + j * 0.9;
+    const y = h + 2.4 + ly * Math.cos(tilt), lz = 0.3 - 0.2 - ly * Math.sin(tilt);
+    f.cyl(R.METAL, 0.36, 0.36, 0.3, 10, lx, y, lz, { rx: Math.PI / 2 + tilt });
+    f.cyl(R.LAMP, 0.29, 0.29, 0.32, 10, lx, y, lz - 0.02, { rx: Math.PI / 2 + tilt });
+  }
 }
 
 // advertising boards around the perimeter, words facing the pitch
@@ -252,38 +353,278 @@ function adBoards(b, atlas, words) {
   seg(-xEdge, GOAL.HW + 4, zEdge - 1, true, Math.PI / 2);
 }
 
+// dugouts: back wall, curved perspex canopy on a frame, glass ends and bucket seats
 function dugouts(b, z = 27.2) {
-  for (const x of [-9, 9]) {
+  for (const [x, seatRole] of [[-9, R.BANNER_HOME], [9, R.BANNER_AWAY]]) {
     const f = new Frame(b, x, z, 0);
-    f.box(R.STAND_C, 7, 2.2, 0.15, 0, 1.1, 1.0);
-    f.box(R.ROOF, 7.2, 0.12, 1.8, 0, 2.25, 0.2, { rx: -0.08 });
-    for (const sx of [-1, 1]) f.box(R.STAND_C, 0.12, 2.1, 1.7, sx * 3.5, 1.05, 0.2);
-    f.box(R.WOOD, 6.4, 0.45, 0.5, 0, 0.22, 0.6);
+    f.box(R.STAND_C, 7, 2.3, 0.15, 0, 1.15, 1.0);
+    f.box(R.CONCRETE, 7.2, 0.12, 1.9, 0, 0.06, 0.25);
+    // canopy: four panels bending from the back wall over the front
+    const arc = [[1.0, 2.3], [0.55, 2.42], [0.0, 2.38], [-0.5, 2.2], [-0.8, 1.9]];
+    for (let k = 0; k < arc.length - 1; k++) {
+      const [z0, y0] = arc[k], [z1, y1] = arc[k + 1];
+      const len = Math.hypot(z1 - z0, y1 - y0);
+      f.box(R.GLASS, 7.1, 0.05, len, 0, (y0 + y1) / 2, (z0 + z1) / 2, { rx: Math.atan2(y1 - y0, z0 - z1) });
+    }
+    for (const sx of [-1, 1]) {
+      f.box(R.GLASS, 0.06, 1.9, 1.6, sx * 3.55, 1.2, 0.2);
+      f.box(R.METAL, 0.1, 2.3, 0.1, sx * 3.55, 1.15, -0.7);
+    }
+    b.fine(() => {
+      for (let i = 0; i < 7; i++) {
+        const lx = -2.85 + i * 0.95;
+        f.box(seatRole, 0.5, 0.08, 0.45, lx, 0.48, 0.62);
+        f.box(seatRole, 0.5, 0.5, 0.07, lx, 0.72, 0.86, { rx: -0.12 });
+        f.box(R.METAL, 0.06, 0.44, 0.06, lx, 0.22, 0.62);
+      }
+    });
   }
 }
 
-function tree(b, x, z, s, rand) {
-  b.cyl(R.TRUNK, 0.18 * s, 0.25 * s, 2.2 * s, 6, x, 1.1 * s, z);
-  b.cone(R.TREE, 1.8 * s, 4.5 * s, 8, x, 2.2 * s + 2.25 * s, z, { ry: rand() * 3 });
-  b.cone(R.TREE, 1.3 * s, 3.2 * s, 8, x, 2.2 * s + 3.6 * s, z, { ry: rand() * 3 });
+// Medium quality trims small scenery details (glazing bars, some tree clumps and bush
+// lumps); Low simplifies further (no garden fences, tile courses or tree branches)
+let lowDetail = false, midDetail = false;
+
+// ---------------------------------------------------------------- trees
+// pine: trunk and four stacked tiers; broadleaf: branching trunk under a crown of
+// leafy clumps; poplar: tall narrow crown. Two foliage tones for depth.
+function tree(b, x, z, s, parentRand, kind) {
+  const k = kind || (parentRand() < 0.45 ? 'pine' : parentRand() < 0.75 ? 'broadleaf' : 'poplar');
+  const rand = fork(parentRand);
+  const lean = (rand() - 0.5) * 0.06;
+  if (k === 'pine') {
+    b.cyl(R.TRUNK, 0.14 * s, 0.24 * s, 2.4 * s, 7, x, 1.2 * s, z);
+    const tiers = lowDetail ? 3 : 4;
+    for (let i = 0; i < tiers; i++) {
+      const t = i / tiers;
+      const r = (1.95 - t * 1.25) * s, h = (2.5 - t * 0.7) * s;
+      b.cone(i % 2 ? R.TREE_2 : R.TREE, r, h, 9, x + lean * i, (1.9 + t * 3.6) * s + h / 2, z, { ry: rand() * 3, rz: lean });
+    }
+  } else if (k === 'poplar') {
+    b.cyl(R.TRUNK, 0.12 * s, 0.2 * s, 2.2 * s, 7, x, 1.1 * s, z);
+    b.add(tIco(1, 1), GeoBuilder.mat(x, 4.6 * s, z, 0, rand() * 3, lean, 1.25 * s, 3.1 * s, 1.25 * s), R.TREE_2);
+    b.add(tIco(1, 1), GeoBuilder.mat(x + 0.35 * s, 3.6 * s, z - 0.3 * s, 0, rand() * 3, 0, 1.0 * s, 1.9 * s, 1.0 * s), R.TREE);
+  } else {
+    // broadleaf: trunk, three branches and a dome of clumps
+    const th = 2.6 * s;
+    b.cyl(R.TRUNK, 0.18 * s, 0.3 * s, th, 8, x, th / 2, z);
+    const clumps = [];
+    const extra = lowDetail ? 1 : midDetail ? 2 : 3;
+    for (let i = 0; i < extra; i++) {
+      const a = rand() * Math.PI * 2 + i * 2.1, len = (1.3 + rand() * 0.6) * s;
+      const bx = x + Math.cos(a) * len, bz = z + Math.sin(a) * len, by = th + (0.9 + rand() * 0.6) * s;
+      b.between(R.TRUNK, 0.1 * s, x, th - 0.4 * s, z, bx, by, bz, 6);
+      clumps.push([bx, by + 0.5 * s, bz, (1.3 + rand() * 0.4) * s]);
+    }
+    clumps.push([x, th + 2.3 * s, z, 1.7 * s]);
+    for (let i = 0; i < extra; i++) { const a = rand() * Math.PI * 2; clumps.push([x + Math.cos(a) * 1.1 * s, th + (1.1 + rand() * 1.2) * s, z + Math.sin(a) * 1.1 * s, (1.1 + rand() * 0.4) * s]); }
+    clumps.forEach(([cx, cy, cz, r], i) => b.add(tIco(1, 1), GeoBuilder.mat(cx, cy, cz, rand() * 3, rand() * 3, 0, r, r * 0.85, r), i % 2 ? R.TREE_2 : R.TREE));
+  }
 }
 
-// unit pyramid (1 x 1 base, height 1) for roofs, scaled per building
-const pyramidT = () => tFrom('pyramid', () => { const g = new THREE.ConeGeometry(Math.SQRT1_2, 1, 4); g.rotateY(Math.PI / 4); return g; }, 30);
-function roof(b, x, y, z, w, h, d, ry) { b.add(pyramidT(), GeoBuilder.mat(x, y + h / 2, z, 0, ry, 0, w, h, d), R.ROOF_TILE); }
+function bush(b, x, z, s, parentRand, role = R.HEDGE) {
+  const rand = fork(parentRand);
+  const n = 2 + Math.floor(rand() * 2) - (midDetail && s < 1 ? 1 : 0);
+  for (let i = 0; i < n; i++) {
+    const r = (0.45 + rand() * 0.3) * s;
+    b.add(tIco(1, 1), GeoBuilder.mat(x + (i - (n - 1) / 2) * 0.55 * s, r * 0.75, z + (rand() - 0.5) * 0.4 * s, 0, rand() * 3, 0, r, r * 0.8, r), i % 2 ? role : R.TREE_2);
+  }
+}
 
-function house(b, x, z, ry, rand) {
+// ---------------------------------------------------------------- houses
+// unit pyramid (1 x 1 base, height 1) for hip roofs, scaled per building
+const pyramidT = () => tFrom('pyramid', () => { const g = new THREE.ConeGeometry(Math.SQRT1_2, 1, 4); g.rotateY(Math.PI / 4); return g; }, 30);
+function roof(b, x, y, z, w, h, d, ry, role = R.ROOF_TILE) { b.add(pyramidT(), GeoBuilder.mat(x, y + h / 2, z, 0, ry, 0, w, h, d), role); }
+// unit gable prism: ridge along x, 1 wide (z) at the base, apex at y 1
+const prismT = () => tFrom('prism', () => {
+  const v = [
+    [-0.5, 0, -0.5], [0.5, 0, -0.5], [0.5, 0, 0.5], [-0.5, 0, 0.5], [-0.5, 1, 0], [0.5, 1, 0],
+  ];
+  // counter-clockwise from outside: gable ends, front and back slopes, base
+  const tri = [[0, 3, 4], [1, 5, 2], [0, 5, 1], [0, 4, 5], [3, 5, 4], [3, 2, 5], [0, 2, 3], [0, 1, 2]];
+  const pos = [];
+  for (const t of tri) for (const i of t) pos.push(...v[i]);
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.computeVertexNormals();
+  return g;
+}, 30);
+
+// a gable roof over a w x d footprint in frame f (ridge along local x), with tile
+// courses drawn as ink lines, a ridge cap and gable walls underneath
+function gableRoof(f, w, d, h, rise, ov, wallRole) {
+  const b = f.b;
+  const [cx, cz] = f.w(0, 0);
+  b.add(prismT(), GeoBuilder.mat(cx, h - 0.02, cz, 0, f.ry, 0, w - 0.02, rise - 0.08, d - 0.02), wallRole);
+  b.add(prismT(), GeoBuilder.mat(cx, h, cz, 0, f.ry, 0, w + ov * 2, rise + 0.12, d + ov * 2), R.ROOF_TILE);
+  f.box(R.ROOF_TILE, w + ov * 2 + 0.1, 0.12, 0.2, 0, h + rise + 0.1, 0);
+  const courses = lowDetail ? 0 : Math.max(2, Math.round(rise / 0.45));
+  b.detail = true;
+  for (let i = 1; i < courses; i++) {
+    const t = i / courses;
+    const y = h + (rise + 0.12) * t + 0.015, zz = (d / 2 + ov) * (1 - t) + 0.02;
+    for (const sz of [-1, 1]) {
+      const [ax, az] = f.w(-(w / 2 + ov), sz * zz), [bx, bz] = f.w(w / 2 + ov, sz * zz);
+      b.line(ax, y, az, bx, y, bz);
+    }
+  }
+  b.detail = false;
+}
+
+function windowAt(f, lx, y, lz, w, h, facing = 0) {
+  // frame, glass set back a little, a cross of glazing bars and a sill
+  const o = { ry: facing, detail: true };
+  f.box(R.LINES, w + 0.16, h + 0.16, 0.1, lx, y, lz, o);
+  f.box(R.GLASS, w, h, 0.12, lx, y, lz, o);
+  if (!midDetail) {
+    f.box(R.LINES, 0.06, h, 0.14, lx, y, lz, o);
+    f.box(R.LINES, w, 0.06, 0.14, lx, y + h * 0.12, lz, o);
+  }
+  f.box(R.CONCRETE, w + 0.3, 0.08, 0.26, lx, y - h / 2 - 0.1, lz, o);
+}
+
+function doorAt(f, lx, lz, role = R.DOOR) { f.b.fine(() => doorParts(f, lx, lz, role)); }
+function doorParts(f, lx, lz, role) {
+  f.box(R.LINES, 1.16, 2.22, 0.1, lx, 1.11, lz);
+  f.box(role, 0.96, 2.08, 0.13, lx, 1.04, lz);
+  f.box(R.GLASS, 0.5, 0.36, 0.15, lx, 1.72, lz);
+  if (midDetail) f.box(R.GOLD, 0.07, 0.07, 0.08, lx + 0.32, 1.05, lz - 0.08);
+  else f.sphere(R.GOLD, 0.045, lx + 0.32, 1.05, lz - 0.08, { ws: 6, hs: 4 });
+  f.box(R.CONCRETE, 1.5, 0.16, 0.6, lx, 0.08, lz - 0.3);
+  f.box(R.ROOF_TILE, 1.6, 0.1, 0.7, lx, 2.45, lz - 0.3, { rx: 0.2 });
+}
+
+function chimney(f, lx, y0, lz, h) {
+  f.box(R.BRICK, 0.7, h, 0.6, lx, y0 + h / 2, lz);
+  f.box(R.CONCRETE, 0.84, 0.1, 0.74, lx, y0 + h + 0.05, lz);
+  for (const dx of [-0.16, 0.16]) f.cyl(R.BRICK, 0.08, 0.09, 0.32, 7, lx + dx, y0 + h + 0.26, lz);
+}
+
+function gutter(f, w, lz, y) {
+  const [ax, az] = f.w(-w / 2, lz), [bx, bz] = f.w(w / 2, lz);
+  f.b.fine(() => {
+    f.b.between(R.METAL, 0.06, ax, y, az, bx, y, bz, 6);
+    f.cyl(R.METAL, 0.045, 0.045, y, 6, w / 2 - 0.1, y / 2, lz);
+  });
+}
+
+function frontGarden(f, w, lz, rand, doorX) {
+  // low picket fence or a hedge, a path to the door and a couple of bushes
+  const gr = fork(rand);
+  if (lowDetail) return;
+  f.b.fine(() => gardenParts(f, w, lz, gr, doorX));
+}
+function gardenParts(f, w, lz, rand, doorX) {
+  const gz = lz - 3.2;
+  if (rand() < 0.5) {
+    const n = Math.round(w / 0.5);
+    for (let i = 0; i <= n; i++) {
+      const lx = -w / 2 + (w * i) / n;
+      if (Math.abs(lx - doorX) < 0.6) continue;
+      f.box(R.LINES, 0.08, 0.9, 0.05, lx, 0.45, gz);
+    }
+    for (const y of [0.3, 0.72]) {
+      f.box(R.LINES, doorX + w / 2 - 0.6, 0.07, 0.05, (-w / 2 + doorX - 0.6) / 2, y, gz);
+      f.box(R.LINES, w / 2 - doorX - 0.6, 0.07, 0.05, (w / 2 + doorX + 0.6) / 2, y, gz);
+    }
+  } else {
+    f.box(R.HEDGE, doorX + w / 2 - 0.7, 0.95, 0.6, (-w / 2 + doorX - 0.7) / 2, 0.47, gz);
+    f.box(R.HEDGE, w / 2 - doorX - 0.7, 0.95, 0.6, (w / 2 + doorX + 0.7) / 2, 0.47, gz);
+  }
+  f.box(R.CONCRETE, 1.1, 0.03, 3.1, doorX, 0.015, lz - 1.6);
+  const [bx, bz] = f.w(-w / 2 + 1, lz - 1.3);
+  bush(f.b, bx, bz, 0.9, rand, R.HEDGE);
+  if (rand() < 0.6) { const [fx, fz] = f.w(w / 2 - 1.2, lz - 1.2); bush(f.b, fx, fz, 0.6, rand, R.FLOWER); }
+}
+
+// Houses face -z in their frame (towards the pitch). Kinds: a two-storey gabled
+// house, a hip-roofed house with a porch, a row of three terraced houses and a
+// cottage with a dormer window.
+function house(b, x, z, ry, rand, kind) {
   const f = new Frame(b, x, z, ry);
-  const w = 7 + rand() * 3, d = 6 + rand() * 2, h = 5 + rand() * 2.5;
-  const role = rand() < 0.5 ? R.HOUSE_A : R.HOUSE_B;
-  f.box(role, w, h, d, 0, h / 2, 0);
-  // pyramid roof: 4-sided cone rotated 45 degrees and stretched
-  const [wx, wz] = f.w(0, 0);
-  roof(b, wx, h, wz, w + 0.4, 2.6, d + 0.4, ry);
-  // windows and door facing the pitch
-  for (let i = -1; i <= 1; i += 2) f.box(R.STAND_C, 1.3, 1.2, 0.08, i * w * 0.25, h * 0.62, -d / 2 - 0.04);
-  f.box(R.WOOD, 1.1, 2.1, 0.08, 0, 1.05, -d / 2 - 0.04);
-  f.cyl(R.CONCRETE, 0.35, 0.35, 1.4, 6, w * 0.3, h + 1.0, d * 0.15);
+  const k = kind || ['gable', 'hip', 'terrace', 'cottage', 'gable'][Math.floor(rand() * 5)];
+  const wall = rand() < 0.5 ? R.HOUSE_A : R.HOUSE_B;
+  if (k === 'terrace') {
+    const unit = 4.6, n = 3, w = unit * n, d = 7, h = 5.6;
+    for (let i = 0; i < n; i++) {
+      const lx = -w / 2 + unit * (i + 0.5);
+      f.box(i % 2 ? R.HOUSE_A : R.HOUSE_B, unit, h, d, lx, h / 2, 0);
+      windowAt(f, lx + 0.9, h * 0.72, -d / 2 - 0.02, 1.1, 1.2);
+      windowAt(f, lx - 1.0, h * 0.72, -d / 2 - 0.02, 0.9, 1.2);
+      windowAt(f, lx + 0.9, 1.5, -d / 2 - 0.02, 1.3, 1.3);
+      doorAt(f, lx - 1.0, -d / 2 - 0.02);
+      if (i > 0) chimney(f, -w / 2 + unit * i, h + 0.6, 0.6, 1.8);
+      f.box(R.LINES, 0.1, h, 0.05, -w / 2 + unit * i, h / 2, -d / 2 - 0.03);
+    }
+    f.box(R.BRICK, w + 0.1, 0.5, d + 0.1, 0, 0.25, 0);
+    gableRoof(f, w, d, h, 2.4, 0.35, wall);
+    gutter(f, w, -d / 2 - 0.4, h);
+    f.box(R.CONCRETE, w, 0.03, 3.4, 0, 0.015, -d / 2 - 1.7);
+    return;
+  }
+  const w = 7.5 + rand() * 2.5, d = 6.5 + rand() * 1.5;
+  const h = k === 'cottage' ? 3.2 : 5.6 + rand() * 0.8;
+  f.box(wall, w, h, d, 0, h / 2, 0);
+  f.box(R.BRICK, w + 0.1, 0.5, d + 0.1, 0, 0.25, 0);
+  const doorX = (rand() < 0.5 ? -1 : 1) * w * 0.18;
+  doorAt(f, doorX, -d / 2 - 0.02);
+  const ground = [-w * 0.33, w * 0.33].filter((lx) => Math.abs(lx - doorX) > 1.2);
+  for (const lx of ground) windowAt(f, lx, 1.5, -d / 2 - 0.02, 1.4, 1.3);
+  // side windows
+  for (const sx of [-1, 1]) windowAt(f, sx * (w / 2 + 0.02), k === 'cottage' ? 1.5 : h * 0.7, 0, 1.1, 1.1, Math.PI / 2);
+  if (k !== 'cottage') for (const lx of [-w * 0.3, 0, w * 0.3]) windowAt(f, lx, h * 0.72, -d / 2 - 0.02, 1.1, 1.2);
+  if (k === 'hip') {
+    const [wx, wz] = f.w(0, 0);
+    roof(b, wx, h, wz, w + 0.9, 2.3, d + 0.9, f.ry);
+    chimney(f, w * 0.28, h + 0.5, d * 0.15, 1.9);
+    // porch on posts around the door
+    f.box(R.ROOF_TILE, 2.6, 0.14, 1.6, doorX, 2.75, -d / 2 - 0.8);
+    for (const px of [-1.15, 1.15]) f.cyl(R.LINES, 0.07, 0.07, 2.7, 8, doorX + px, 1.35, -d / 2 - 1.45);
+  } else {
+    const rise = k === 'cottage' ? 3.0 : 2.6;
+    gableRoof(f, w, d, h, rise, 0.4, wall);
+    chimney(f, -w * 0.32, h + rise * 0.45, d * 0.12, 1.4 + rise * 0.45);
+    if (k === 'cottage') {
+      // dormer window on the front slope
+      const dz = -d * 0.18, dy = h + rise * 0.3;
+      f.box(wall, 1.6, 1.3, 1.6, 0, dy + 0.4, dz);
+      const [cx, cz] = f.w(0, dz);
+      b.add(prismT(), GeoBuilder.mat(cx, dy + 1.05, cz, 0, f.ry + Math.PI / 2, 0, 1.9, 0.7, 1.9), R.ROOF_TILE);
+      windowAt(f, 0, dy + 0.4, dz - 0.82, 0.9, 0.8);
+    }
+  }
+  gutter(f, w + 0.6, -d / 2 - 0.35, h);
+  frontGarden(f, w, -d / 2, rand, doorX);
+}
+
+// clubhouse: long single-storey building with a veranda, windows and a name board
+function clubhouse(b, cx, cz, ry, w, d, h, rand) {
+  const f = new Frame(b, cx, cz, ry);
+  f.box(R.HOUSE_B, w, h, d, 0, h / 2, 0);
+  f.box(R.BRICK, w + 0.1, 0.5, d + 0.1, 0, 0.25, 0);
+  gableRoof(f, w, d, h, 2.0, 0.5, R.HOUSE_B);
+  const n = Math.max(2, Math.floor(w / 3.4));
+  for (let i = 0; i < n; i++) {
+    const lx = -w / 2 + (w * (i + 0.5)) / n;
+    if (Math.abs(lx) < 1.4) continue;
+    windowAt(f, lx, 2.0, -d / 2 - 0.02, 1.8, 1.3);
+  }
+  doorAt(f, 0, -d / 2 - 0.02);
+  // veranda: deck, posts, rail and roof
+  f.box(R.WOOD, w, 0.25, 2.6, 0, 0.12, -d / 2 - 1.3);
+  const np = Math.max(3, Math.round(w / 3));
+  for (let i = 0; i <= np; i++) f.cyl(R.WOOD, 0.08, 0.08, h - 0.4, 7, -w / 2 + (w * i) / np, (h - 0.4) / 2, -d / 2 - 2.5);
+  f.box(R.ROOF_TILE, w + 0.4, 0.14, 2.9, 0, h - 0.35, -d / 2 - 1.35, { rx: 0.12 });
+  for (let i = 0; i < np; i++) {
+    const lx = -w / 2 + (w * (i + 0.5)) / np;
+    if (Math.abs(lx) < 1) continue;
+    f.box(R.WOOD, w / np - 0.2, 0.08, 0.08, lx, 0.95, -d / 2 - 2.5);
+  }
+  f.box(R.LINES, 4.2, 0.7, 0.12, 0, h + 0.2, -d / 2 - 0.1);
+  f.box(R.BANNER_HOME, 3.9, 0.45, 0.14, 0, h + 0.2, -d / 2 - 0.1);
+  chimney(f, w * 0.3, h + 0.6, 0.5, 1.8);
+  gutter(f, w + 1, -d / 2 - 0.45, h);
+  for (let i = 0; i < 3; i++) { const [bx, bz] = f.w(-w / 2 + 2 + i * (w - 4) / 2, d / 2 + 1.2); bush(b, bx, bz, 1, rand); }
 }
 
 function fence(b, x0, z0, x1, z1, h = 2.2) {
@@ -307,7 +648,18 @@ function fence(b, x0, z0, x1, z1, h = 2.2) {
 function scoreboardFrame(b, x, y, z, ry, w, h) {
   const f = new Frame(b, x, z, ry);
   f.box(R.METAL, w + 0.8, h + 0.8, 0.5, 0, y, 0.3);
-  for (const sx of [-1, 1]) f.cyl(R.METAL, 0.2, 0.2, y - h / 2, 8, sx * w * 0.35, (y - h / 2) / 2, 0.4);
+  f.box(R.BANNER_HOME, w + 0.9, 0.22, 0.56, 0, y + h / 2 + 0.3, 0.3);
+  const legH = y - h / 2;
+  for (const sx of [-1, 1]) f.cyl(R.METAL, 0.2, 0.2, legH, 8, sx * w * 0.35, legH / 2, 0.4);
+  // cross bracing between the legs
+  const n = Math.max(1, Math.round(legH / 2.4));
+  b.fine(() => {
+    for (let k = 0; k < n; k++) {
+      const y0 = (legH * k) / n, y1 = (legH * (k + 1)) / n;
+      const [ax, az] = f.w(-w * 0.35, 0.4), [bx, bz] = f.w(w * 0.35, 0.4);
+      b.line(ax, y0, az, bx, y1, bz); b.line(bx, y0, bz, ax, y1, az);
+    }
+  });
   return { x, y, z, ry, w, h };
 }
 
@@ -356,6 +708,8 @@ export function buildVenue(type, ctx) {
   const { atlas, quality = 'high', homeName = 'HOME', final = false, seed = 7 } = ctx;
   const rand = rnd(seed * 31 + type.length);
   const density = quality === 'low' ? 0.35 : quality === 'medium' ? 0.65 : 1;
+  lowDetail = quality === 'low';
+  midDetail = quality !== 'high';
   const b = new GeoBuilder({ bob: true, atlas: true });
   const bc = new GeoBuilder(); // shadow casters near the pitch (goal frames)
   const stats = { people: 0, seats: [] };
@@ -376,16 +730,11 @@ export function buildVenue(type, ctx) {
       for (let i = 0; i < 60; i++) stats.seats.push({ f: ff, lx: -34 + rand() * 68, y: 0, lz: rand() * 0.8, w: 1, seated: false });
       dugouts(b, 26.5);
       // clubhouse behind a goal
-      const ch = new Frame(b, -47, 8, Math.PI / 2);
-      ch.box(R.HOUSE_B, 16, 4.5, 8, 0, 2.25, 0);
-      const [cx, cz] = ch.w(0, 0);
-      roof(b, cx, 4.5, cz, 16.4, 2.4, 8.4, Math.PI / 2);
-      ch.box(R.WOOD, 2, 2.2, 0.1, 0, 1.1, -4.05);
-      ch.box(R.STAND_C, 3, 1.2, 0.1, -5, 2.6, -4.05);
-      ch.box(R.STAND_C, 3, 1.2, 0.1, 5, 2.6, -4.05);
-      // houses and trees around the ground
-      for (let i = 0; i < 7; i++) house(b, -48 + i * 16 + rand() * 3, 46 + rand() * 4, Math.PI, rand);
-      for (let i = 0; i < 6; i++) house(b, -44 + i * 17 + rand() * 3, -50 - rand() * 4, 0, rand);
+      // local -z is a building's front: north of the pitch that needs ry 0, south of it PI, west of it -PI/2
+      clubhouse(b, -48, 8, -Math.PI / 2, 16, 8, 4.2, rand);
+      // houses and trees around the ground, facing it from both sides
+      for (let i = 0; i < 7; i++) house(b, -48 + i * 16 + rand() * 3, 48 + rand() * 4, 0, rand);
+      for (let i = 0; i < 6; i++) house(b, -44 + i * 17 + rand() * 3, -52 - rand() * 4, Math.PI, rand);
       for (let i = 0; i < 16; i++) tree(b, -60 + rand() * 120, (rand() < 0.5 ? 1 : -1) * (36 + rand() * 6), 0.8 + rand() * 0.5, rand);
       for (let i = 0; i < 6; i++) tree(b, 48 + rand() * 10, -25 + rand() * 50, 0.8 + rand() * 0.5, rand);
       screens.push(scoreboardFrame(b, 46, 3.2, -16, -Math.PI / 2, 4, 1.5));
@@ -401,7 +750,7 @@ export function buildVenue(type, ctx) {
       for (const [x, z] of [[-44, -34], [44, -34], [-44, 34], [44, 34]]) floodlight(b, x, z, 24);
       screens.push(scoreboardFrame(b, -47, 7, 18, Math.PI / 2, 6, 2.2));
       for (let i = 0; i < 10; i++) tree(b, -70 + rand() * 140, (rand() < 0.5 ? 1 : -1) * (52 + rand() * 12), 1 + rand() * 0.5, rand);
-      for (let i = 0; i < 5; i++) house(b, -60 + i * 28, 70, Math.PI, rand);
+      for (let i = 0; i < 5; i++) house(b, -60 + i * 28, 72, 0, rand);
       break;
     }
     case 'regional': {
@@ -482,11 +831,7 @@ export function buildVenue(type, ctx) {
         b.between(R.GOAL_FRAME, 0.04, gx, 1.2, sz0 - 1.8, gx, 1.2, sz0 - 3.8, 8);
       }
       // clubhouse and training shed
-      const ch = new Frame(b, 0, 48, 0);
-      ch.box(R.HOUSE_A, 26, 6, 10, 0, 3, 0);
-      ch.box(R.ROOF, 27, 0.4, 11, 0, 6.2, 0);
-      for (let i = -3; i <= 3; i++) ch.box(R.STAND_C, 2.2, 1.6, 0.1, i * 3.4, 3.4, -5.05);
-      ch.box(R.WOOD, 2.4, 2.6, 0.1, 0, 1.3, -5.05);
+      clubhouse(b, 0, 49, 0, 26, 10, 4.6, rand);
       for (let i = 0; i < 18; i++) tree(b, -80 + rand() * 160, (rand() < 0.5 ? 1 : -1) * (44 + rand() * 20), 0.9 + rand() * 0.6, rand);
       // benches and ball bags
       for (let i = 0; i < 3; i++) b.box(R.WOOD, 3, 0.45, 0.5, -10 + i * 10, 0.22, 33);
@@ -502,7 +847,9 @@ export function buildVenue(type, ctx) {
     const wsum = seats.reduce((a, q) => a + q.w, 0);
     const p = Math.min(1, budget / wsum);
     for (const q of seats) {
-      if (rand() < q.w * p) { person(q.f, q.lx, q.y, q.lz, rand, q.seated); stats.people++; }
+      // arms only on High quality and only in the front rows of the lower tiers, where they
+      // can be seen: the biggest crowds hold thousands of fans
+      if (rand() < q.w * p) { person(q.f, q.lx, q.y, q.lz, rand, q.seated, quality === 'high' && (q.row == null || q.row < 6)); stats.people++; }
     }
   }
   v.people = stats.people;

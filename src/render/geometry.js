@@ -106,6 +106,52 @@ export function tFrom(key, factory, crease = 30, edges = true) {
   return templateCache.get(key);
 }
 
+// Smooth loft through horizontal ellipses, bottom to top: levels = [[y, rx, rz, dz = 0], ...].
+// Ends are closed with flat caps (their own vertices, so they stay crisp).
+export function loftGeometry(levels, seg = 12, caps = [true, true]) {
+  const pos = [], idx = [];
+  const row = seg + 1;
+  for (const [y, rx, rz, dz = 0] of levels) {
+    for (let i = 0; i <= seg; i++) { const a = (i / seg) * Math.PI * 2; pos.push(Math.sin(a) * rx, y, Math.cos(a) * rz + dz); }
+  }
+  for (let l = 0; l < levels.length - 1; l++) {
+    for (let i = 0; i < seg; i++) {
+      const a = l * row + i, b = a + 1, c = a + row, d = c + 1;
+      idx.push(a, b, c, b, d, c);
+    }
+  }
+  const cap = (l, top) => {
+    const [y, rx, rz, dz = 0] = levels[l];
+    if (rx < 1e-5 && rz < 1e-5) return;
+    const c0 = pos.length / 3;
+    pos.push(0, y, dz);
+    for (let i = 0; i <= seg; i++) { const a = (i / seg) * Math.PI * 2; pos.push(Math.sin(a) * rx, y, Math.cos(a) * rz + dz); }
+    for (let i = 0; i < seg; i++) { if (top) idx.push(c0, c0 + 1 + i, c0 + 2 + i); else idx.push(c0, c0 + 2 + i, c0 + 1 + i); }
+  };
+  if (caps[0]) cap(0, false);
+  if (caps[1]) cap(levels.length - 1, true);
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setIndex(idx);
+  g.computeVertexNormals();
+  // the ring seam has duplicate vertices: share their normals so toon shading shows no seam
+  const n = g.attributes.normal;
+  for (let l = 0; l < levels.length; l++) {
+    const i0 = l * row, i1 = l * row + seg;
+    const x = n.getX(i0) + n.getX(i1), y = n.getY(i0) + n.getY(i1), z = n.getZ(i0) + n.getZ(i1), L = Math.hypot(x, y, z) || 1;
+    n.setXYZ(i0, x / L, y / L, z / L); n.setXYZ(i1, x / L, y / L, z / L);
+  }
+  return g;
+}
+// cached loft; `axis` 'z' turns it to run along +z (levels' rz becomes the height, dz is then "down")
+export function tLoft(key, levels, seg = 12, o = {}) {
+  return tFrom(`loft:${key}:${seg}`, () => {
+    const g = loftGeometry(levels, seg, o.caps || [true, true]);
+    if (o.axis === 'z') g.rotateX(Math.PI / 2);
+    return g;
+  }, o.crease ?? 55);
+}
+
 export function tIco(r, detail = 1) {
   const key = `ico:${r}:${detail}`;
   if (!templateCache.has(key)) templateCache.set(key, toTemplate(new THREE.IcosahedronGeometry(r, detail), 70));
@@ -120,6 +166,7 @@ export class GeoBuilder {
     this.pos = []; this.nor = []; this.role = []; this.part = []; this.bob = []; this.uv = [];
     this.eA = []; this.eB = []; this.eN1 = []; this.eN2 = []; this.eMeta = []; this.eBob = [];
     this.vcount = 0;
+    this.detail = false; // while set, new edges are fine detail (dropped with distance)
   }
 
   // add a template transformed by matrix
@@ -149,6 +196,7 @@ export class GeoBuilder {
     this.vcount += P.length / 3;
     if (o.noEdges || !t.edges.length) return this;
     const creaseOnly = !!o.creaseOnly;
+    const det = (o.detail ?? this.detail) ? 2 : 0;
     for (const ed of t.edges) {
       if (creaseOnly && ed.crease < 0.5) continue;
       const a = ed.a, b = ed.b;
@@ -158,7 +206,7 @@ export class GeoBuilder {
       this.eN1.push(_v.x, _v.y, _v.z);
       if (ed.n2[0] === 0 && ed.n2[1] === 0 && ed.n2[2] === 0) this.eN2.push(0, 0, 0);
       else { _v.set(ed.n2[0], ed.n2[1], ed.n2[2]).applyMatrix3(_nm).normalize(); this.eN2.push(_v.x, _v.y, _v.z); }
-      this.eMeta.push(part, ed.crease);
+      this.eMeta.push(part, ed.crease + det);
       if (this.opts.bob) this.eBob.push(bob ? bob[0] : 0, bob ? bob[1] : 0);
     }
     return this;
@@ -168,7 +216,7 @@ export class GeoBuilder {
   line(ax, ay, az, bx, by, bz, part = -1) {
     this.eA.push(ax, ay, az); this.eB.push(bx, by, bz);
     this.eN1.push(0, 1, 0); this.eN2.push(0, 0, 0);
-    this.eMeta.push(part, 1);
+    this.eMeta.push(part, this.detail ? 3 : 1);
     if (this.opts.bob) this.eBob.push(0, 0);
     return this;
   }
@@ -228,4 +276,7 @@ export class GeoBuilder {
   }
 
   get edgeCount() { return this.eA.length / 3; }
+
+  // run fn with every edge it adds marked as fine detail
+  fine(fn) { const d = this.detail; this.detail = true; try { fn(); } finally { this.detail = d; } }
 }

@@ -13,6 +13,8 @@ export const SU = {
   uLineWidth: { value: 1.2 },
   uMinWidth: { value: 1.0 },
   uTaper: { value: 22 },
+  // fine-detail ink (window bars, roof tiles, seat rows, bracing) is only drawn this close
+  uDetailDist: { value: 50 },
   uResolution: { value: new THREE.Vector2(1280, 720) },
   uTime: { value: 0 },
   uCrowd: { value: 0 },
@@ -179,6 +181,7 @@ uniform float uLineWidth;
 uniform float uWidthScale;
 uniform float uMinWidth;
 uniform float uTaper;
+uniform float uDetailDist;
 uniform vec2 uResolution;
 #include <common>
 #include <fog_pars_vertex>
@@ -209,7 +212,10 @@ void main() {
 #endif
   vec4 wa = modelMatrix * vec4(a, 1.0);
   vec4 wb = modelMatrix * vec4(b, 1.0);
-  float crease = iMeta.y;
+  // iMeta.y: 1 = crease, +2 = fine detail that fades out with distance
+  float detail = step(1.5, iMeta.y);
+  float crease = iMeta.y - 2.0 * detail;
+  if (detail > 0.5 && length(0.5 * (wa.xyz + wb.xyz) - cameraPosition) > uDetailDist) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); return; }
   bool boundary = dot(n2, n2) < 0.01;
   if (!boundary) {
     vec3 V = 0.5 * (wa.xyz + wb.xyz) - cameraPosition;
@@ -270,7 +276,7 @@ export function makeEdgeMaterial(o = {}) {
   if (o.net) defines.NET = '';
   const uniforms = THREE.UniformsUtils.merge([THREE.UniformsLib.fog]);
   Object.assign(uniforms, {
-    uLineWidth: SU.uLineWidth, uMinWidth: SU.uMinWidth, uTaper: SU.uTaper, uResolution: SU.uResolution, uParts: SU.uParts,
+    uLineWidth: SU.uLineWidth, uMinWidth: SU.uMinWidth, uTaper: SU.uTaper, uDetailDist: SU.uDetailDist, uResolution: SU.uResolution, uParts: SU.uParts,
     uTime: SU.uTime, uCrowd: SU.uCrowd,
     uNetA: SU.uNetA, uNetDA: SU.uNetDA, uNetB: SU.uNetB, uNetDB: SU.uNetDB,
     uColor: { value: palette[o.role ?? R.INK] },
