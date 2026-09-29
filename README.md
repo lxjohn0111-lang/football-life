@@ -49,6 +49,15 @@ One scheme is used everywhere (tutorial text, HUD hints, menus):
 - If pointer lock is unavailable or refused, you can play with **drag-look**: hold a mouse button and drag, or use the arrow keys. All other controls are unchanged.
 - The browser context menu is suppressed during play. The game pauses and mutes when the tab loses focus.
 
+### First-time tutorial
+
+On a first visit the game opens Coach Ada's warm-up instead of the menu: nine quick drills on the training ground (find a golden star by looking around, jog to a circle, sprint to another, take the ball, dribble through a gate, pass to Jojo, receive his return pass, score past Sleepy Sam in goal, and tackle Big Barry to win the ball back). The coach card shows what to do, the controls for your device (mouse and keyboard or touch), progress dots and a timer bar, and an arrow at the screen edge points to the objective when it is out of view.
+
+- Each drill has a par time; beating it earns a star (up to nine), and the result screen gives a rank from "Future legend" to "Superstar".
+- It never runs past two minutes: every drill has a time limit after which the coach simply moves on, and the whole warm-up has a hard two-minute cap. Played normally it takes well under a minute and a half.
+- Skip it at any time: **Skip tutorial** on the start card, on the coach card (tap it on touch screens), or press Esc and choose **Skip tutorial** in the pause menu.
+- Once finished or skipped it never shows automatically again (remembered in the browser's local storage). It can be replayed from **Training**.
+
 ### Phones and tablets
 
 The game runs in mobile browsers with on-screen touch controls. They appear automatically on touch screens and switch off again if you use a mouse; Settings → Touch controls can force them on or off.
@@ -168,7 +177,7 @@ node tests/pacing.mjs         # matches needed to reach the elite tier by form
 node tests/shooting.mjs 1     # shot placement vs keeper at a given tier
 ```
 
-Browser checks (require Playwright with Chromium, `node server.js` running) write screenshots to `tests/out/`: `tests/browser.mjs` (venues and styles), `tests/flow.mjs` (create career → match → report → hub, reload persistence), `tests/ui.mjs` (menus, pause, settings), `tests/drills.mjs`, `tests/fulltime.mjs`, `tests/styleswitch.mjs` (mid-match style switch leaves the simulation identical), `tests/robust.mjs` (focus loss, corrupted save), `tests/fp.mjs`, `tests/poses.mjs`, `tests/net.mjs`, `tests/bigvenues.mjs [classic|neo]`, `tests/fov.mjs` (normal and wide field of view), `tests/possession.mjs` (possession glow in both styles), `tests/controls.mjs` (real keyboard/mouse: E tackles, W+Shift dribbling while swinging the view, FOV slider), `tests/mobile.mjs [classic|neo]` (phone emulation with real multi-touch: menus fit, tap to play, stick, look, both thumbs at once, SHOOT/PASS/TACKLE, pause; landscape and portrait), `tests/mobile-screens.mjs` (settings, visual style and match report on phone screens).
+Browser checks (require Playwright with Chromium, `node server.js` running) write screenshots to `tests/out/`: `tests/browser.mjs` (venues and styles), `tests/flow.mjs` (create career → match → report → hub, reload persistence), `tests/ui.mjs` (menus, pause, settings), `tests/drills.mjs`, `tests/fulltime.mjs`, `tests/styleswitch.mjs` (mid-match style switch leaves the simulation identical), `tests/robust.mjs` (focus loss, corrupted save), `tests/fp.mjs`, `tests/poses.mjs`, `tests/net.mjs`, `tests/bigvenues.mjs [classic|neo]`, `tests/fov.mjs` (normal and wide field of view), `tests/possession.mjs` (possession glow in both styles), `tests/controls.mjs` (real keyboard/mouse: E tackles, W+Shift dribbling while swinging the view, FOV slider), `tests/mobile.mjs [classic|neo]` (phone emulation with real multi-touch: menus fit, tap to play, stick, look, both thumbs at once, SHOOT/PASS/TACKLE, pause; landscape and portrait), `tests/mobile-screens.mjs` (settings, visual style and match report on phone screens), `tests/tutorial.mjs [classic|neo]` (first visit shows the tutorial, a scripted player completes it inside two minutes, an idle player is still done in time, the result screen, never shown again after finishing or skipping, skip from the start card, the pause menu and the coach card on phones). Automated browsers don't get the first-run tutorial unless the URL has `?tutorial`.
 
 `node tests/human.mjs 4 ST 1 standard` takes the difficulty as a fifth argument and also reports the opposing team's pass completion, shots and goals.
 

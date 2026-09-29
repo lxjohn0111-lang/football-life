@@ -1,6 +1,7 @@
 // DOM screens: main menu, career creation, career hub, match report, quick
 // match, training, visual style (with previews rendered by the game itself),
 // settings, how to play / credits and the pause menu.
+import * as THREE from 'three';
 import { CONTROLS, TOUCH_CONTROLS } from '../core/input.js';
 import { FOV_MIN, FOV_MAX } from '../core/settings.js';
 import { CLUBS, clubById, crestSVG, tierInfo, NATIONALITIES, clubsInTier, TIERS } from '../career/clubs.js';
@@ -11,6 +12,8 @@ import {
 import { POSITIONS, HALF_LENGTHS } from '../sim/constants.js';
 import { DIFFICULTY } from '../sim/match.js';
 import { DRILLS, Drill } from '../game/drills.js';
+import { Tutorial, STEPS, markTutorial } from '../game/tutorial.js';
+import { CoachCard } from './coach.js';
 import { defaultPlayer } from '../career/teams.js';
 import { resolveKits } from '../render/palette.js';
 
@@ -323,7 +326,9 @@ export class Screens {
     const c = this.app.store.career;
     const xpNote = c ? (c.trainingAvailable ? 'Your next completed drill earns development XP (once between matches).' : 'You have already trained since your last match: drills give no XP until you play again.') : 'Without a career, drills are just for practice.';
     const cards = Object.entries(DRILLS).map(([k, d]) => `<div class="panel"><h3>${esc(d.name)}</h3><p class="small">${esc(d.desc)}</p><div class="small muted">${d.time ? `${d.time} seconds` : 'Untimed'}</div><button class="btn primary" data-act="go" data-k="${k}" style="margin-top:8px">Start</button></div>`).join('');
-    this.show(`<div class="panel" style="width:min(1000px,96vw)"><h2>Training Ground</h2><p class="small">${xpNote} Training never counts towards club interest.</p><div class="grid2">${cards}</div><div class="row" style="margin-top:12px"><button class="btn" data-act="back">Back</button></div></div>`, {
+    const tut = `<div class="panel"><h3>Tutorial with Coach Ada</h3><p class="small">The basics in under two minutes: look, move, dribble, pass, shoot and tackle. Earn a star for each quick drill.</p><div class="small muted">About 2 minutes · no XP</div><button class="btn primary" data-act="tut" style="margin-top:8px">Start</button></div>`;
+    this.show(`<div class="panel" style="width:min(1000px,96vw)"><h2>Training Ground</h2><p class="small">${xpNote} Training never counts towards club interest.</p><div class="grid2">${tut}${cards}</div><div class="row" style="margin-top:12px"><button class="btn" data-act="back">Back</button></div></div>`, {
+      tut: () => this.startTutorial(),
       go: (b) => this.startDrill(b.dataset.k, fromHub),
       back: () => (fromHub ? this.hub() : this.mainMenu()),
     });
@@ -355,6 +360,102 @@ export class Screens {
     pump();
     session.match.events.on('drillGoal', (e) => { app.view.celebrate(e.pos.x, e.pos.z, 0, 0.5); app.audio.play('net'); app.audio.play('cheer', { gain: 0.3 }); });
     app.hud.showBanner(DRILLS[kind].name, DRILLS[kind].desc, 3500);
+  }
+
+  // ------------------------------------------------------------ tutorial
+  // Coach Ada's warm-up. Shown automatically on the first visit; finishing or
+  // skipping it (here, in the pause menu or on its start card) retires it for good.
+  startTutorial(o = {}) {
+    const app = this.app;
+    const c = app.store.career;
+    const human = { ...(c ? c.player : defaultPlayer()) };
+    const tut = new Tutorial(human);
+    const club = c ? clubById(c.clubId) : CLUBS[0];
+    const kits = resolveKits(club, CLUBS.find((x) => x.id !== club.id && x.tier === club.tier) || CLUBS[1]);
+    this.tutorialFirst = !!o.first;
+    const session = app.startSession({
+      mode: 'tutorial', venue: 'training', venueOpts: { homeName: 'Training' },
+      colours: { kits, human: human.look }, match: tut.matchConfig(), noStart: true,
+      clockText: () => '', onStep: () => tut.step(),
+      onEnd: () => this.tutorialResult(tut),
+    });
+    tut.setup(session.match, app.view);
+    session.tutorial = tut;
+    session.cam.yaw = session.human.yaw;
+    app.hud.root.classList.add('tut');
+    const card = new CoachCard(app.uiRoot, STEPS.length, () => this.skipTutorial());
+    const orig = session.dispose.bind(session);
+    session.dispose = () => { tut.dispose(); card.dispose(); app.hud.root.classList.remove('tut'); orig(); };
+    const objV = new THREE.Vector3();
+    const pump = () => {
+      if (app.session !== session) return;
+      while (tut.events.length) this.tutorialFx(tut.events.shift(), session);
+      const st = tut.current;
+      const touch = app.input.touchMode;
+      const live = st && tut.waitUntil == null && tut.endAt == null;
+      card.show(!app.paused && !session.ended);
+      const goal = !app.paused && !session.ended ? tut.objective(objV) : null;
+      card.pointAt(goal ? app.view.projectToScreen(goal, goal) : null);
+      card.update({
+        index: tut.idx, doneCount: tut.results.length, say: tut.say, stars: tut.stars, keyboard: !touch,
+        hint: live ? st.hint[touch ? 1 : 0] : '', frac: live ? 1 - tut.stepT / st.cap : 0,
+      });
+      requestAnimationFrame(pump);
+    };
+    pump();
+    return session;
+  }
+
+  tutorialFx(e, session) {
+    const app = this.app, v = app.view, h = session.human;
+    switch (e.type) {
+      case 'note': app.hud.notify(e.text, e.kind); break;
+      case 'step': app.audio.play('ui', { gain: 0.35 }); break;
+      case 'star': v.celebrate(e.x, e.z, 0, 0.45); break;
+      case 'done': if (e.ok) { v.celebrate(e.x, e.z, 0, e.big ? 1.2 : 0.3); app.audio.play(e.star ? 'ack' : 'ui', { gain: 0.55 }); } break;
+      case 'goal': app.audio.play('net'); app.audio.play('cheer', { gain: 0.55 }); app.hud.showBanner('GOAL!', 'Sleepy Sam never saw it coming', 1400, 'mine'); break;
+      case 'fade': app.hud.flashFade(); break;
+      case 'finale': app.audio.play('whistle', { gain: 0.5 }); app.audio.play('cheer', { gain: 0.35 }); v.celebrate(h.pos.x + Math.sin(h.yaw) * 4, h.pos.z + Math.cos(h.yaw) * 4, 0, 1.2); break;
+    }
+  }
+
+  skipTutorial() {
+    markTutorial('skipped');
+    const app = this.app;
+    if (app.session) app.endSession();
+    this.mainMenu();
+    this.toast('Tutorial skipped. You can replay it any time from Training.');
+  }
+
+  tutorialResult(tut) {
+    const app = this.app;
+    app.input.active = false;
+    app.input.exitLock();
+    markTutorial('done');
+    const r = tut.result();
+    const stars = '★'.repeat(r.stars) + '☆'.repeat(r.total - r.stars);
+    const time = `${Math.floor(r.time / 60)}:${String(Math.floor(r.time % 60)).padStart(2, '0')}`;
+    const c = app.store.career;
+    const lines = {
+      Superstar: 'Nine out of nine. Are you sure you haven\'t done this before?',
+      'Starting XI': 'Starting XI material. The scouts will be watching.',
+      'Squad player': 'Solid work. A few matches and you\'ll fly.',
+      'Future legend': 'Every legend starts somewhere. Yours starts now.',
+    };
+    this.current = 'tutorialResult';
+    this.show(`<div class="panel tut-card" style="text-align:center;max-width:540px">
+      <div class="tut-badge">${r.timeUp ? 'TIME\'S UP' : 'WARM-UP COMPLETE'}</div>
+      <div class="tut-stars" aria-label="${r.stars} of ${r.total} stars">${stars}</div>
+      <h2>${esc(r.rank)}</h2>
+      <p>${r.stars} of ${r.total} stars · ${time}</p>
+      <p class="small">Coach Ada: "${esc(lines[r.rank])}"</p>
+      <div class="row" style="justify-content:center;margin-top:10px">
+        <button class="btn primary big" data-act="career">${c ? 'Continue your career' : 'Start your career'}</button>
+        <button class="btn" data-act="menu">Main menu</button>
+      </div></div>`, {
+      career: () => { app.endSession(); if (c) this.hub(); else this.newCareer(); },
+      menu: () => { app.endSession(); this.mainMenu(); },
+    });
   }
 
   drillResult(drill, fromHub) {
@@ -462,14 +563,15 @@ export class Screens {
     this.current = 'pause';
     const app = this.app;
     const sess = app.session;
-    const exitLabel = sess && sess.cfg.mode === 'career' ? 'Exit to Career Hub' : sess && sess.cfg.mode === 'drill' ? 'Exit to Training' : 'Exit to Main Menu';
+    const mode = sess ? sess.cfg.mode : null;
+    const exitLabel = mode === 'career' ? 'Exit to Career Hub' : mode === 'drill' ? 'Exit to Training' : mode === 'tutorial' ? 'Skip tutorial' : 'Exit to Main Menu';
     this.show(`<div class="panel" style="width:min(420px,92vw)"><h2>Paused</h2>
       <div class="col">
         <button class="btn primary big" data-act="resume">Resume</button>
         <button class="btn" data-act="controls">Controls</button>
         <button class="btn" data-act="settings">Settings</button>
         <button class="btn" data-act="style">Visual Style</button>
-        ${sess && sess.cfg.mode !== 'drill' ? '<button class="btn" data-act="stats">Match Statistics</button>' : ''}
+        ${sess && mode !== 'drill' && mode !== 'tutorial' ? '<button class="btn" data-act="stats">Match Statistics</button>' : ''}
         <button class="btn danger" data-act="exit">${exitLabel}</button>
       </div>
       ${sess && sess.cfg.mode === 'career' ? '<p class="small muted">Leaving now abandons the match: it will not count and the fixture stays unplayed.</p>' : ''}</div>`, {
@@ -479,7 +581,7 @@ export class Screens {
       style: () => this.styleMenu(true),
       stats: () => this.liveStats(),
       exit: () => {
-        const mode = sess ? sess.cfg.mode : null;
+        if (mode === 'tutorial') { this.skipTutorial(); return; }
         app.endSession();
         if (mode === 'career') this.hub(); else if (mode === 'drill') this.training(!!app.store.career); else this.mainMenu();
       },
@@ -512,6 +614,19 @@ export class Screens {
     const first = !this.seenControls;
     this.seenControls = true;
     const title = sess && sess.cfg.title ? `<h2>${esc(sess.cfg.title)}</h2>` : '';
+    if (sess && sess.cfg.mode === 'tutorial') {
+      const touch = this.app.input.touchMode;
+      this.show(`<div class="panel tut-card" style="text-align:center;max-width:560px">
+        <div class="tut-badge">2-MINUTE WARM-UP</div>
+        <h2>Welcome to First Touch!</h2>
+        <p>Coach Ada will show you the basics: look around, run, dribble, pass, shoot and tackle. Be quick on each drill to earn a star.</p>
+        <div class="row" style="justify-content:center;margin-top:6px"><button class="btn primary big" data-act="start">Start tutorial</button><button class="btn" data-act="skip">Skip tutorial</button></div>
+        <div class="small muted" style="margin-top:10px">${touch ? 'Best played with the phone sideways.' : 'Starting captures your mouse. Press Esc at any time to pause or skip.'}</div></div>`, {
+        start: () => this.app.resume(),
+        skip: () => this.skipTutorial(),
+      });
+      return;
+    }
     if (this.app.input.touchMode) {
       const trows = TOUCH_CONTROLS.map(([k, d]) => `<tr><td><b>${k}</b></td><td>${d}</td></tr>`).join('');
       this.show(`<div class="panel tap-panel" style="text-align:center;max-width:620px">${title}<div class="lockmsg">Tap to play</div>

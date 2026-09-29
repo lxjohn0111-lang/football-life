@@ -363,9 +363,14 @@ export class SceneView {
   projectToScreen(pos, out) {
     const c = this.camera;
     if (!this.isWide()) {
-      out.copy(pos).project(c);
-      if (out.z > 1) { out.x = -out.x * 50; out.y = -out.y * 50; }
-      return out;
+      out.copy(pos).applyMatrix4(c.matrixWorldInverse);
+      if (out.z > -0.05) {
+        // beside or behind the camera: point towards the shorter way to turn
+        const sx = out.x >= 0 ? 1 : -1;
+        const up = THREE.MathUtils.clamp(out.y / (Math.hypot(out.x, out.z) + 1e-3), -0.6, 0.6);
+        return out.set(sx * 50, up * 50, 0);
+      }
+      return out.applyMatrix4(c.projectionMatrix);
     }
     const { d, R } = wideParams(this.hfov);
     out.copy(pos).applyMatrix4(c.matrixWorldInverse);

@@ -15,6 +15,7 @@ import { Screens } from './ui/screens.js';
 import { CareerStore } from './career/save.js';
 import { prepareMatch } from './career/career.js';
 import { hashString } from './sim/rng.js';
+import { tutorialSeen } from './game/tutorial.js';
 
 class App {
   constructor() {
@@ -73,13 +74,15 @@ class App {
     document.addEventListener('gesturestart', (e) => e.preventDefault());
 
     document.getElementById('boot')?.remove();
-    this.startMenuBackground();
-    this.screens.mainMenu();
+    const auto = this.params.get('auto');
+    // first visit: Coach Ada's warm-up instead of the menu (automated test browsers opt in with ?tutorial)
+    const firstRun = !auto && !tutorialSeen() && (!navigator.webdriver || this.params.has('tutorial'));
+    if (firstRun) this.screens.startTutorial({ first: true });
+    else { this.startMenuBackground(); this.screens.mainMenu(); }
     requestAnimationFrame((t) => this.loop(t));
     window.__ft = this;
     // test hook: advance the live simulation deterministically by n fixed steps
     this.debugStep = (n) => { const m = (this.session || this.menuSession).match; for (let i = 0; i < n; i++) m.step(1 / 120); };
-    const auto = this.params.get('auto');
     if (auto) setTimeout(() => this.autostart(auto), 50);
   }
 
@@ -88,6 +91,7 @@ class App {
     if (half) this.testHalf = half;
     if (kind === 'quick') this.startQuickMatch({ home: this.params.get('home') || 'millbrook', away: this.params.get('away') || 'ashford', role: this.params.get('role') || 'ST', venue: this.params.get('venue'), halfLength: half });
     else if (kind === 'practice') this.startTraining('practice');
+    else if (kind === 'tutorial') this.screens.startTutorial();
     else if (kind.startsWith('drill:')) this.startTraining(kind.slice(6));
     else if (kind === 'hub') this.screens.hub();
   }
