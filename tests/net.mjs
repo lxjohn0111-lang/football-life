@@ -6,7 +6,7 @@ const browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--ena
 const page = await browser.newPage({ viewport: { width: 800, height: 450 } });
 page.setDefaultTimeout(120000);
 await page.mouse.move(400, 225);
-await page.goto(`http://localhost:8080/index.html?auto=quick&home=kingsport&away=westmoor&style=${process.argv[2] || 'classic'}`);
+await page.goto(`http://localhost:8080/index.html?auto=quick&home=mancity&away=arsenal&style=${process.argv[2] || 'classic'}`);
 await page.waitForTimeout(1500);
 await page.mouse.click(400, 225);
 await page.waitForTimeout(300);

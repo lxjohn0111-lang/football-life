@@ -1,6 +1,6 @@
 // Versioned career save with a backup copy and corruption detection.
 import { CAREER_VERSION } from './career.js';
-import { clubById } from './clubs.js';
+import { clubById, LEGACY_IDS } from './clubs.js';
 
 const KEY = 'firsttouch.career';
 const BACKUP = 'firsttouch.career.backup';
@@ -33,7 +33,10 @@ function migrate(c, fromVersion) {
 function parse(raw) {
   const env = JSON.parse(raw);
   if (!env || typeof env.data !== 'string' || checksum(env.data) !== env.sum) throw new Error('checksum mismatch');
-  const data = JSON.parse(env.data);
+  // careers from before the real clubs: every old club id becomes its real club
+  let text = env.data;
+  for (const [o, n] of Object.entries(LEGACY_IDS)) text = text.split(`"${o}"`).join(`"${n}"`);
+  const data = JSON.parse(text);
   const v = env.version || 1;
   if (v > CAREER_VERSION) throw new Error('save from a newer version');
   const c = migrate(data, v);

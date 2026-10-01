@@ -27,7 +27,7 @@ const S = {
   async venues() {
     const page = await open('');
     for (const v of ['community', 'town', 'regional', 'premier', 'continental', 'training']) {
-      await ev(page, (v) => { const a = window.__ft; a.view.setVenue(v, { homeName: 'Millbrook Rovers', final: v === 'continental' }); a.debugCam = { pos: [-52, 20, 44], look: [0, 0, 0] }; a.screens.clear(); }, v);
+      await ev(page, (v) => { const a = window.__ft; a.view.setVenue(v, { homeName: 'Swindon Town', final: v === 'continental' }); a.debugCam = { pos: [-52, 20, 44], look: [0, 0, 0] }; a.screens.clear(); }, v);
       await page.waitForTimeout(700);
       await page.screenshot({ path: `${OUT}/venue_${v}.png` });
       const st = await ev(page, () => window.__ft.view.stats());
@@ -59,7 +59,7 @@ const S = {
     await page.close();
   },
   async play() {
-    const page = await open('auto=quick&home=millbrook&away=ashford&role=ST');
+    const page = await open('auto=quick&home=swindon&away=chesterfield&role=ST');
     await startPlay(page);
     await page.waitForTimeout(1500);
     await page.screenshot({ path: `${OUT}/play_kickoff.png` });
@@ -78,7 +78,7 @@ const S = {
     await page.close();
   },
   async goal() {
-    const page = await open('auto=quick&home=kingsport&away=westmoor&role=ST');
+    const page = await open('auto=quick&home=mancity&away=arsenal&role=ST');
     await startPlay(page);
     // a camera behind the goal, fire a shot into the top corner
     await ev(page, () => {

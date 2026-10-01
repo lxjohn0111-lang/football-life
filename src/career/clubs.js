@@ -1,42 +1,58 @@
-// 20 fictional clubs across 5 prestige tiers. Crests are built from simple
-// shapes at runtime (SVG), kits and playing styles are data.
+// 20 real clubs across 5 prestige tiers, taken from the openfootball/football.json data
+// (https://github.com/openfootball/football.json, public domain / CC0): the current
+// 2026/27 Premier League, Championship and top European leagues, and League One and
+// League Two from 2025/26 (the latest season the data has for them, mid-table clubs).
+// Kit colours and grounds are the clubs' real ones; crests are simple generated badges
+// with the club's initial (not the clubs' own crests). The crest pattern also sets the
+// kit design (stripes, band, halves, contrast sleeves).
+export const DATA_SOURCE = 'openfootball/football.json (CC0) · seasons 2026/27 and 2025/26';
 export const TIERS = [
-  { tier: 1, league: 'Parkside League', venue: 'community', label: 'Community' },
-  { tier: 2, league: 'County Division', venue: 'town', label: 'Town' },
-  { tier: 3, league: 'Regional Championship', venue: 'regional', label: 'Regional' },
-  { tier: 4, league: 'Premier Circuit', venue: 'premier', label: 'Premier' },
-  { tier: 5, league: 'Continental Elite', venue: 'continental', label: 'Continental' },
+  { tier: 1, league: 'League Two', venue: 'community', label: 'League Two' },
+  { tier: 2, league: 'League One', venue: 'town', label: 'League One' },
+  { tier: 3, league: 'Championship', venue: 'regional', label: 'Championship' },
+  { tier: 4, league: 'Premier League', venue: 'premier', label: 'Premier League' },
+  { tier: 5, league: 'European Elite', venue: 'continental', label: 'European Elite' },
 ];
 
 // colors: [shirt, secondary/change shirt, shorts]
 export const CLUBS = [
-  { id: 'millbrook', name: 'Millbrook Rovers', short: 'MIL', tier: 1, colors: ['#1f8a4c', '#f5f5f0', '#f5f5f0'], style: 'wing', crest: { shape: 'shield', pattern: 'chevron', symbol: 'M' }, ground: 'Millbrook Rec' },
-  { id: 'ashford', name: 'Ashford Athletic', short: 'ASH', tier: 1, colors: ['#c8102e', '#111111', '#111111'], style: 'direct', crest: { shape: 'circle', pattern: 'stripes', symbol: 'A' }, ground: 'Station Lane' },
-  { id: 'kettle', name: 'Kettle Lane FC', short: 'KET', tier: 1, colors: ['#f07c1b', '#1c2a4a', '#1c2a4a'], style: 'counter', crest: { shape: 'diamond', pattern: 'half', symbol: 'K' }, ground: 'Kettle Lane' },
-  { id: 'harbour', name: 'Harbour Park Wanderers', short: 'HPW', tier: 1, colors: ['#5fb7e8', '#ffffff', '#ffffff'], style: 'possession', crest: { shape: 'shield', pattern: 'band', symbol: 'H' }, ground: 'Harbour Park' },
+  { id: 'swindon', name: 'Swindon Town', short: 'SWI', tier: 1, colors: ['#d1101e', '#ffffff', '#ffffff'], style: 'wing', crest: { shape: 'shield', pattern: 'chevron', symbol: 'S' }, ground: 'County Ground' },
+  { id: 'chesterfield', name: 'Chesterfield', short: 'CHF', tier: 1, colors: ['#0a3d91', '#ffffff', '#ffffff'], style: 'direct', crest: { shape: 'circle', pattern: 'chevron', symbol: 'C' }, ground: 'SMH Group Stadium' },
+  { id: 'bromley', name: 'Bromley', short: 'BRO', tier: 1, colors: ['#f5f5f5', '#111111', '#111111'], style: 'counter', crest: { shape: 'diamond', pattern: 'chevron', symbol: 'B' }, ground: 'Hayes Lane' },
+  { id: 'grimsby', name: 'Grimsby Town', short: 'GRI', tier: 1, colors: ['#151515', '#f5f5f5', '#151515'], style: 'possession', crest: { shape: 'shield', pattern: 'stripes', symbol: 'G' }, ground: 'Blundell Park' },
 
-  { id: 'oldbridge', name: 'Oldbridge Town', short: 'OLD', tier: 2, colors: ['#7a1f3d', '#8ccdf0', '#ffffff'], style: 'possession', crest: { shape: 'shield', pattern: 'quarters', symbol: 'O' }, ground: 'Bridge Road' },
-  { id: 'fenwick', name: 'Fenwick United', short: 'FEN', tier: 2, colors: ['#f2c500', '#111111', '#111111'], style: 'pressing', crest: { shape: 'circle', pattern: 'band', symbol: 'F' }, ground: 'Fenwick Meadow' },
-  { id: 'stonegate', name: 'Stonegate Albion', short: 'STA', tier: 2, colors: ['#1d2f6f', '#ffffff', '#ffffff'], style: 'direct', crest: { shape: 'hex', pattern: 'chevron', symbol: 'S' }, ground: 'The Gatehouse' },
-  { id: 'crowmere', name: 'Crowmere City', short: 'CRO', tier: 2, colors: ['#6b3fa0', '#e8c547', '#ffffff'], style: 'wing', crest: { shape: 'diamond', pattern: 'stripes', symbol: 'C' }, ground: 'Crowmere Park' },
+  { id: 'bradford', name: 'Bradford City', short: 'BRA', tier: 2, colors: ['#7d1d3f', '#f6a800', '#111111'], style: 'possession', crest: { shape: 'shield', pattern: 'stripes', symbol: 'B' }, ground: 'Valley Parade' },
+  { id: 'barnsley', name: 'Barnsley', short: 'BNS', tier: 2, colors: ['#d71920', '#ffffff', '#ffffff'], style: 'pressing', crest: { shape: 'circle', pattern: 'chevron', symbol: 'B' }, ground: 'Oakwell' },
+  { id: 'wigan', name: 'Wigan Athletic', short: 'WIG', tier: 2, colors: ['#1d59af', '#ffffff', '#1d59af'], style: 'direct', crest: { shape: 'hex', pattern: 'stripes', symbol: 'W' }, ground: 'Brick Community Stadium' },
+  { id: 'plymouth', name: 'Plymouth Argyle', short: 'PLY', tier: 2, colors: ['#00573f', '#ffffff', '#111111'], style: 'wing', crest: { shape: 'diamond', pattern: 'chevron', symbol: 'P' }, ground: 'Home Park' },
 
-  { id: 'redcliffe', name: 'Redcliffe County', short: 'RED', tier: 3, colors: ['#d62828', '#ffffff', '#ffffff'], style: 'pressing', crest: { shape: 'shield', pattern: 'stripes', symbol: 'R' }, ground: 'Cliffside Stadium' },
-  { id: 'northvale', name: 'Northvale Forest', short: 'NVF', tier: 3, colors: ['#1b5e3a', '#f2f2f2', '#f2f2f2'], style: 'counter', crest: { shape: 'circle', pattern: 'chevron', symbol: 'N' }, ground: 'Vale Ground' },
-  { id: 'easthaven', name: 'Easthaven Rangers', short: 'EHR', tier: 3, colors: ['#1565c0', '#ffffff', '#ffffff'], style: 'wing', crest: { shape: 'hex', pattern: 'half', symbol: 'E' }, ground: 'Haven Road' },
-  { id: 'marlow', name: 'Marlow Heath', short: 'MAR', tier: 3, colors: ['#1a1a1a', '#f4f4f4', '#1a1a1a'], style: 'possession', crest: { shape: 'shield', pattern: 'quarters', symbol: 'M' }, ground: 'Heath Lane' },
+  { id: 'westham', name: 'West Ham United', short: 'WHU', tier: 3, colors: ['#7a263a', '#1bb1e7', '#ffffff'], style: 'pressing', crest: { shape: 'shield', pattern: 'quarters', symbol: 'W' }, ground: 'London Stadium' },
+  { id: 'wolves', name: 'Wolverhampton Wanderers', short: 'WOL', tier: 3, colors: ['#fdb913', '#231f20', '#231f20'], style: 'counter', crest: { shape: 'circle', pattern: 'chevron', symbol: 'W' }, ground: 'Molineux' },
+  { id: 'southampton', name: 'Southampton', short: 'SOU', tier: 3, colors: ['#d71920', '#ffffff', '#111111'], style: 'wing', crest: { shape: 'hex', pattern: 'stripes', symbol: 'S' }, ground: "St Mary's Stadium" },
+  { id: 'swansea', name: 'Swansea City', short: 'SWA', tier: 3, colors: ['#f5f5f5', '#121212', '#f5f5f5'], style: 'possession', crest: { shape: 'shield', pattern: 'chevron', symbol: 'S' }, ground: 'Swansea.com Stadium' },
 
-  { id: 'kingsport', name: 'Kingsport Royals', short: 'KIN', tier: 4, colors: ['#2446c7', '#f2c14e', '#ffffff'], style: 'possession', crest: { shape: 'circle', pattern: 'crown', symbol: 'K' }, ground: 'Royal Park' },
-  { id: 'westmoor', name: 'Westmoor Athletic', short: 'WES', tier: 4, colors: ['#f4f4f4', '#111111', '#111111'], style: 'pressing', crest: { shape: 'shield', pattern: 'band', symbol: 'W' }, ground: 'Moorside Arena' },
-  { id: 'ironside', name: 'Ironside FC', short: 'IRO', tier: 4, colors: ['#5d6470', '#e0352b', '#e0352b'], style: 'direct', crest: { shape: 'hex', pattern: 'stripes', symbol: 'I' }, ground: 'The Foundry' },
-  { id: 'solace', name: 'Solace Bay', short: 'SOL', tier: 4, colors: ['#0f8b8d', '#f58a07', '#ffffff'], style: 'wing', crest: { shape: 'diamond', pattern: 'chevron', symbol: 'S' }, ground: 'Bayfront Arena' },
+  { id: 'mancity', name: 'Manchester City', short: 'MCI', tier: 4, colors: ['#6cabdd', '#1c2c5b', '#ffffff'], style: 'possession', crest: { shape: 'circle', pattern: 'chevron', symbol: 'M' }, ground: 'Etihad Stadium' },
+  { id: 'arsenal', name: 'Arsenal', short: 'ARS', tier: 4, colors: ['#ef0107', '#ffffff', '#ffffff'], style: 'pressing', crest: { shape: 'shield', pattern: 'quarters', symbol: 'A' }, ground: 'Emirates Stadium' },
+  { id: 'liverpool', name: 'Liverpool', short: 'LIV', tier: 4, colors: ['#c8102e', '#f6eb61', '#c8102e'], style: 'direct', crest: { shape: 'shield', pattern: 'chevron', symbol: 'L' }, ground: 'Anfield' },
+  { id: 'chelsea', name: 'Chelsea', short: 'CHE', tier: 4, colors: ['#034694', '#ffffff', '#034694'], style: 'counter', crest: { shape: 'circle', pattern: 'chevron', symbol: 'C' }, ground: 'Stamford Bridge' },
 
-  { id: 'valmonte', name: 'Valmonte Sporting', short: 'VAL', tier: 5, colors: ['#f5f5f5', '#6a2c91', '#6a2c91'], style: 'possession', crest: { shape: 'shield', pattern: 'crown', symbol: 'V' }, ground: 'Estadio Valmonte' },
-  { id: 'nordhavn', name: 'Nordhavn Kickers', short: 'NOR', tier: 5, colors: ['#d7263d', '#ffffff', '#ffffff'], style: 'pressing', crest: { shape: 'circle', pattern: 'half', symbol: 'N' }, ground: 'Nordhavn Arena' },
-  { id: 'castellan', name: 'Castellan Imperial', short: 'CAS', tier: 5, colors: ['#141414', '#d4af37', '#141414'], style: 'counter', crest: { shape: 'hex', pattern: 'crown', symbol: 'C' }, ground: 'Imperial Bowl' },
-  { id: 'aurelio', name: 'Aurelio Club', short: 'AUR', tier: 5, colors: ['#7cc6f2', '#10265c', '#10265c'], style: 'wing', crest: { shape: 'shield', pattern: 'stripes', symbol: 'A' }, ground: 'Porto Aurelio' },
+  { id: 'realmadrid', name: 'Real Madrid', short: 'RMA', tier: 5, colors: ['#f5f5f5', '#1c2b5a', '#f5f5f5'], style: 'counter', crest: { shape: 'circle', pattern: 'crown', symbol: 'R' }, ground: 'Santiago Bernabéu' },
+  { id: 'barcelona', name: 'FC Barcelona', short: 'BAR', tier: 5, colors: ['#a50044', '#004d98', '#004d98'], style: 'possession', crest: { shape: 'shield', pattern: 'stripes', symbol: 'B' }, ground: 'Camp Nou' },
+  { id: 'bayern', name: 'Bayern München', short: 'BAY', tier: 5, colors: ['#dc052d', '#ffffff', '#dc052d'], style: 'pressing', crest: { shape: 'circle', pattern: 'chevron', symbol: 'B' }, ground: 'Allianz Arena' },
+  { id: 'psg', name: 'Paris Saint-Germain', short: 'PSG', tier: 5, colors: ['#004170', '#da291c', '#004170'], style: 'wing', crest: { shape: 'hex', pattern: 'band', symbol: 'P' }, ground: 'Parc des Princes' },
 ];
 
-export const clubById = (id) => CLUBS.find((c) => c.id === id);
+// the fictional clubs of earlier versions, mapped to the real club in the same tier slot
+// (old careers and links keep working)
+export const LEGACY_IDS = {
+  millbrook: 'swindon', ashford: 'chesterfield', kettle: 'bromley', harbour: 'grimsby',
+  oldbridge: 'bradford', fenwick: 'barnsley', stonegate: 'wigan', crowmere: 'plymouth',
+  redcliffe: 'westham', northvale: 'wolves', easthaven: 'southampton', marlow: 'swansea',
+  kingsport: 'mancity', westmoor: 'arsenal', ironside: 'liverpool', solace: 'chelsea',
+  valmonte: 'realmadrid', nordhavn: 'barcelona', castellan: 'bayern', aurelio: 'psg',
+};
+
+export const clubById = (id) => CLUBS.find((c) => c.id === id) || CLUBS.find((c) => c.id === LEGACY_IDS[id]);
 export const clubsInTier = (t) => CLUBS.filter((c) => c.tier === t);
 export const tierInfo = (t) => TIERS[t - 1];
 

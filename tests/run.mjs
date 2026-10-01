@@ -248,6 +248,45 @@ test('tackle press fires even while a first-time kick is pending or on cooldown'
   run(m, 0.45, () => { if (m.human.action && m.human.action.type === 'tackle' && m.human.action !== t0) fired = true; });
   assert.ok(fired, 'buffered tackle fired');
 });
+test('every slide press fires: after a slide, mid-tackle, on the ball, tired, mashed', () => {
+  const m = scene({ opps: ['CM'] });
+  const h = m.human, ctl = m.humanCtl;
+  m.ball.place(-20, 15); m.ball.state = 'free';
+  // count slides started within 1.25 s of each press
+  // each check starts in open play with the player mid-pitch (a slide can knock the ball out)
+  const reset = () => { m.phase = 'playing'; m.restart = null; h.pos.set(0, 0, 0); h.prevPos.copy(h.pos); if (m.ball.owner) m.loseControl('loose'); m.ball.place(-20, 15); m.ball.state = 'free'; };
+  const pressAndCount = () => {
+    ctl.press('slide');
+    let started = false; const before = h.action;
+    run(m, 1.25, () => { if (h.action && h.action.type === 'slide' && h.action !== before && h.action.t < 0.02) started = true; });
+    return started;
+  };
+  // 1) twice in a row (the second press comes during the first slide's get-up / cooldown)
+  assert.ok(pressAndCount(), 'first slide');
+  ctl.press('slide'); let again = false; const first = h.action;
+  run(m, 0.5, () => { if (h.action && h.action.type === 'slide' && h.action !== first) again = true; });
+  ctl.press('slide');
+  run(m, 1.3, () => { if (h.action && h.action.type === 'slide' && h.action !== first) again = true; });
+  assert.ok(again, 'a slide pressed during a slide follows it');
+  // 2) in the middle of a tackle
+  run(m, 1.2); reset();
+  ctl.press('tackle'); run(m, 0.1);
+  assert.equal(h.action && h.action.type, 'tackle');
+  assert.ok(pressAndCount(), 'slide cuts into a tackle');
+  // 3) with the ball at the feet
+  run(m, 1.2); reset();
+  m.ball.place(h.pos.x + Math.sin(h.yaw) * 0.4, h.pos.z + Math.cos(h.yaw) * 0.4); m.ball.state = 'free';
+  run(m, 0.3);
+  assert.ok(pressAndCount(), 'slide with the ball');
+  // 4) exhausted
+  run(m, 1.2); reset(); h.stamina = 0.01;
+  assert.ok(pressAndCount(), 'slide when tired');
+  // 5) mashed ten times quickly: at least one slide right away, never stuck
+  run(m, 1.2); reset(); h.stamina = 1;
+  let any = false;
+  for (let i = 0; i < 10; i++) { ctl.press('slide'); run(m, 0.05, () => { if (h.action && h.action.type === 'slide') any = true; }); }
+  assert.ok(any, 'mashing slides');
+});
 test('the human\'s tackle reaches a carrier 2.5 m away and wins the ball', () => {
   let won = 0;
   for (let k = 0; k < 4; k++) {

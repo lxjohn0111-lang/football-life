@@ -89,7 +89,7 @@ class App {
   autostart(kind) {
     const half = this.params.get('half') ? Number(this.params.get('half')) : undefined;
     if (half) this.testHalf = half;
-    if (kind === 'quick') this.startQuickMatch({ home: this.params.get('home') || 'millbrook', away: this.params.get('away') || 'ashford', role: this.params.get('role') || 'ST', venue: this.params.get('venue'), halfLength: half });
+    if (kind === 'quick') this.startQuickMatch({ home: this.params.get('home') || 'swindon', away: this.params.get('away') || 'chesterfield', role: this.params.get('role') || 'ST', venue: this.params.get('venue'), halfLength: half });
     else if (kind === 'practice') this.startTraining('practice');
     else if (kind === 'tutorial') this.screens.startTutorial();
     else if (kind.startsWith('drill:')) this.startTraining(kind.slice(6));
@@ -172,7 +172,7 @@ class App {
   // --------------------------------------------------------- background
   startMenuBackground(venue = 'town') {
     if (this.menuSession) return;
-    const home = clubById('oldbridge'), away = clubById('fenwick');
+    const home = clubById('bradford'), away = clubById('barnsley');
     const kits = resolveKits(home, away);
     const cfg = {
       mode: 'menu', venue, venueOpts: { homeName: home.name },

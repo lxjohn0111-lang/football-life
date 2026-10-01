@@ -135,17 +135,17 @@ Starts at 6.0, clamped to 1.0-10.0. Goals and assists give large increases; succ
 
 - **Create a player:** name, shirt number, nationality, dominant foot, skin/hair/boot colours, preferred position (Striker, Winger, Attacking Midfielder, Central Midfielder, Defender) and starting community club. Position decides where you start, your responsibilities, how your rating is weighted, which attributes start higher and how clubs judge you.
 - **Attributes:** pace, stamina, ball control, passing, finishing and tackling, starting around 44-53 with a small position bonus. Matches award development XP (participation, rating, goals, assists, wins). Every 100 XP gives an upgrade point (+3 below 60, +2 below 75, +1 above).
-- **Clubs:** 20 fictional clubs in 5 tiers of 4, each with a crest built from simple shapes, kit colours, a home ground and a playing style (possession, direct, wing play, pressing, counter-attack).
+- **Clubs:** 20 real clubs in 5 tiers of 4, taken from the [openfootball/football.json](https://github.com/openfootball/football.json) data (public domain): the current 2026/27 Premier League, Championship and top European leagues, and League One and League Two from 2025/26, the latest season the data has for them (mid-table clubs, so ones staying in the division). Each has its real kit colours and home ground and a playing style (possession, direct, wing play, pressing, counter-attack); crests are simple generated badges with the club's initial, not the clubs' own crests. Squad players other than you are generated names. Careers saved with the earlier fictional clubs are moved to the real club in the same slot when loaded.
 
 | Tier | League | Venue | Clubs |
 | --- | --- | --- | --- |
-| 1 | Parkside League | Community Ground | Millbrook Rovers, Ashford Athletic, Kettle Lane FC, Harbour Park Wanderers |
-| 2 | County Division | Town Stadium | Oldbridge Town, Fenwick United, Stonegate Albion, Crowmere City |
-| 3 | Regional Championship | Regional Stadium | Redcliffe County, Northvale Forest, Easthaven Rangers, Marlow Heath |
-| 4 | Premier Circuit | Premier Arena | Kingsport Royals, Westmoor Athletic, Ironside FC, Solace Bay |
-| 5 | Continental Elite | Continental Stadium | Valmonte Sporting, Nordhavn Kickers, Castellan Imperial, Aurelio Club |
+| 1 | League Two | Community Ground | Swindon Town, Chesterfield, Bromley, Grimsby Town |
+| 2 | League One | Town Stadium | Bradford City, Barnsley, Wigan Athletic, Plymouth Argyle |
+| 3 | Championship | Regional Stadium | West Ham United, Wolverhampton Wanderers, Southampton, Swansea City |
+| 4 | Premier League | Premier Arena | Manchester City, Arsenal, Liverpool, Chelsea |
+| 5 | European Elite | Continental Stadium | Real Madrid, FC Barcelona, Bayern München, Paris Saint-Germain |
 
-- **Seasons:** 6 league fixtures (double round robin) and a final placement. Other fixtures are simulated deterministically so the table is consistent. The top two of the Continental Elite meet in the **Continental Cup Final** at the Continental Stadium, with a special presentation. Winning a league or the cup adds a trophy.
+- **Seasons:** 6 league fixtures (double round robin) and a final placement. Other fixtures are simulated deterministically so the table is consistent. The top two of the European Elite meet in the **Continental Cup Final** at the Continental Stadium, with a special presentation. Winning a league or the cup adds a trophy.
 - **Training:** three short drills (Passing Gates, Finishing, Dribbling Course, 45-60 s) plus untimed Free Practice. A drill gives limited XP once between matches and never counts towards club interest.
 - **Club interest** uses your last 5 match ratings (rolling form), long-term reputation, position-specific contributions (e.g. goal involvement for strikers, passing accuracy and ball winning for midfielders, tackles/interceptions and distribution for defenders), appearances for your current club (3 for tier 2 clubs, 5 for tiers 3-5) and whether the club has a role for your position. Interest bars and plain-language requirements are shown in the career hub.
 - **Transfer windows** open after fixture 3 and at the end of the season. Offers show the club, tier, role, wage, contract length, expectations and why the club is interested. Transfers normally move one tier up. You can accept or stay. Mid-season moves join the new club's league at the same round.

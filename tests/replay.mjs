@@ -21,7 +21,7 @@ const ev = (fn, a) => page.evaluate(fn, a);
 // frames that are photographed are drawn (the software GPU is far too slow for all of them)
 const frames = (n) => ev((n) => { const s = window.__ft.session; for (let i = 0; i < n; i++) s.frame(1 / 15); return { replay: !!s.replay, t: s.replay ? +(s.replay.t - s.replay.t0).toFixed(2) : null, phase: s.match.phase }; }, n);
 
-await page.goto(`http://localhost:8080/index.html?auto=quick&home=ashford&away=harbour&style=${style}&seed=11&venue=community`);
+await page.goto(`http://localhost:8080/index.html?auto=quick&home=chesterfield&away=grimsby&style=${style}&seed=11&venue=community`);
 await page.waitForTimeout(3000);
 await page.mouse.click(240, 135);
 await page.waitForTimeout(500);

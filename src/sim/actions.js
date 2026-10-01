@@ -520,9 +520,18 @@ function updateTackle(match, p, a, dt) {
 
 // ---------------------------------------------------------------------------
 // Slide tackle: long reach, longer recovery, limited by a cooldown and stamina.
-export function startSlide(match, p) {
+// o.force (the human pressing slide): no cooldown or stamina floor, and it cuts into a
+// tackle or a kick that hasn't been struck; it only waits while the player is on the
+// ground, still sliding, or about to strike the ball
+export function startSlide(match, p, o = {}) {
   const now = match.time;
-  if (now < p.slideReadyAt || !canAct(match, p) || p.stamina < 0.06) return false;
+  const cur = p.action;
+  if (o.force) {
+    if (now < p.downUntil) return false;
+    if (cur && cur.type === 'slide' && cur.sliding) return false;
+    if (cur && cur.type === 'kick' && cur.contacted && cur.t <= cur.contactT + 0.1) return false;
+    if (match.ball.owner === p) match.loseControl('loose');
+  } else if (now < p.slideReadyAt || !canAct(match, p) || p.stamina < 0.06) return false;
   let dir = p.yaw;
   if (p.speed > 1.2) dir = yawOf(p.vel.x, p.vel.z);
   else if (p.desired.lenXZ() > 0.5) dir = yawOf(p.desired.x, p.desired.z);

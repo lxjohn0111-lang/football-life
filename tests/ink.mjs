@@ -18,7 +18,7 @@ const snap = async (name) => { await ev(() => { const a = window.__ft; a.screens
 
 const port = process.argv[3] || 8080;
 const tag = port == 8080 ? style : `${style}_${port}`;
-await page.goto(`http://localhost:${port}/index.html?auto=quick&home=ashford&away=harbour&style=${style}&seed=5&venue=town`);
+await page.goto(`http://localhost:${port}/index.html?auto=quick&home=chesterfield&away=grimsby&style=${style}&seed=5&venue=town`);
 await page.waitForTimeout(3000);
 await page.mouse.click(480, 270);
 await page.waitForTimeout(600);

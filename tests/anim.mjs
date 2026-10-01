@@ -10,7 +10,7 @@ const page = await browser.newPage({ viewport: { width: 480, height: 270 } });
 page.setDefaultTimeout(240000);
 const errors = [];
 page.on('pageerror', (e) => errors.push(e.message));
-await page.goto(`http://localhost:${process.argv[2] || 8080}/index.html?auto=quick&home=ashford&away=harbour&seed=9&venue=community`);
+await page.goto(`http://localhost:${process.argv[2] || 8080}/index.html?auto=quick&home=chesterfield&away=grimsby&seed=9&venue=community`);
 await page.waitForTimeout(3000);
 await page.mouse.click(240, 135);
 await page.waitForTimeout(500);

@@ -15,8 +15,8 @@ const click = async (t) => { await page.getByText(t, { exact: false }).first().c
 const out = {};
 // quick match setup screen
 await click('Quick Match');
-await page.selectOption('#q-home', 'kingsport');
-await page.selectOption('#q-away', 'valmonte');
+await page.selectOption('#q-home', 'mancity');
+await page.selectOption('#q-away', 'realmadrid');
 await page.selectOption('#q-role', 'W');
 await page.screenshot({ path: 'tests/out/ui_quick.png' });
 await click('Kick Off');

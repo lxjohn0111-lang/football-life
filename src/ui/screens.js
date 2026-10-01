@@ -294,7 +294,7 @@ export class Screens {
   quickMatch() {
     this.current = 'quick';
     const app = this.app;
-    const q = this.lastQuick || { home: 'millbrook', away: 'ashford', side: 0, role: (app.store.career ? app.store.career.player.role : 'ST'), len: app.settings.matchLength };
+    const q = this.lastQuick || { home: 'swindon', away: 'chesterfield', side: 0, role: (app.store.career ? app.store.career.player.role : 'ST'), len: app.settings.matchLength };
     const opts = (sel) => TIERS.map((t) => `<optgroup label="Tier ${t.tier} · ${t.league}">${clubsInTier(t.tier).map((c) => `<option value="${c.id}" ${c.id === sel ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</optgroup>`).join('');
     const el = this.show(`
       <div class="panel" style="width:min(640px,94vw)">
@@ -553,7 +553,7 @@ export class Screens {
       <h3>Career</h3>
       <p class="small">Start at a community club. Each season has 6 league fixtures. Matches give development XP (100 XP = 1 upgrade point); drills give a little XP once between matches. Club interest comes from your last 5 ratings, your reputation, contributions in your position and appearances - never from training or time passing. Offers arrive at transfer windows after fixture 3 and at season end, normally from one tier higher.</p>
       <h3>Credits</h3>
-      <p class="small">First Touch - design, code, geometry and synthesised audio made for this game. Rendering with three.js (MIT licence, vendored). All clubs, players and competitions are fictional.</p>
+      <p class="small">First Touch - design, code, geometry and synthesised audio made for this game. Rendering with three.js (MIT licence, vendored). Clubs (names, kit colours and grounds) come from the openfootball/football.json data (public domain, seasons 2026/27 and 2025/26); club crests are simple generated badges, squad players are fictional.</p>
       <div class="row"><button class="btn primary" data-act="back">Back</button></div></div>`, {
       back: () => (fromPause ? this.pauseMenu() : this.mainMenu()),
     });

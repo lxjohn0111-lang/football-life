@@ -66,8 +66,9 @@ export class HumanController {
     const keep = [];
     for (const e of this.buffer) {
       if (this.handle(e, hasBall)) continue;
-      // tackles wait a little longer for a cooldown or a finishing action
-      const life = e.type === 'tackle' || e.type === 'slide' ? 0.4 : RULES.INPUT_BUFFER;
+      // tackles wait a little longer for a cooldown or a finishing action; a slide waits
+      // until it can go (getting up, the end of a slide in progress)
+      const life = e.type === 'slide' ? 1.2 : e.type === 'tackle' ? 0.4 : RULES.INPUT_BUFFER;
       if (now - e.t < life && !e.type.endsWith('Up')) keep.push(e);
     }
     this.buffer = keep;
@@ -112,11 +113,13 @@ export class HumanController {
       }
       case 'tackle':
       case 'slide': {
-        if (hasBall) return false; // on the ball: hold the press briefly in case it is being lost
+        // on the ball a tackle press waits briefly in case the ball is being lost; a slide
+        // always goes (it plays the ball loose)
+        if (hasBall && e.type === 'tackle') return false;
         // a tackle press overrides a first-time kick that hasn't been struck yet
         if (a && a.type === 'kick' && !a.contacted && !a.owned) { p.action = null; p.faceYaw = null; }
         this.intent = null;
-        const ok = e.type === 'tackle' ? startTackle(m, p) : startSlide(m, p);
+        const ok = e.type === 'tackle' ? startTackle(m, p) : startSlide(m, p, { force: true });
         if (ok) this.lastAction = { kind: e.type, t: now };
         return ok;
       }

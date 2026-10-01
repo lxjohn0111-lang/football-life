@@ -7,7 +7,7 @@ let chromium;
 try { ({ chromium } = require('playwright')); } catch { ({ chromium } = require('/opt/node22/lib/node_modules/playwright')); }
 const OUT = 'tests/out';
 const style = process.argv[2] || 'classic';
-const home = process.argv[3] || 'ashford', away = process.argv[4] || 'harbour';
+const home = process.argv[3] || 'chesterfield', away = process.argv[4] || 'grimsby';
 const quality = process.argv[5] || 'high';
 const tag = quality === 'high' ? style : `${style}_${quality}`;
 const browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
@@ -55,7 +55,7 @@ for (const [venue, cam, name] of [
   ['town', { pos: [30, 8, 20], look: [44, 12, -34] }, 'floodlight'],
   ['town', { pos: [0, 4, 18], look: [0, 3, -32] }, 'stand'],
 ]) {
-  await ev(({ venue, cam }) => { const a = window.__ft; a.view.setVenue(venue, { homeName: 'Millbrook Rovers' }); a.debugCam = cam; }, { venue, cam });
+  await ev(({ venue, cam }) => { const a = window.__ft; a.view.setVenue(venue, { homeName: 'Swindon Town' }); a.debugCam = cam; }, { venue, cam });
   await page.waitForTimeout(600);
   await snap(name);
 }
