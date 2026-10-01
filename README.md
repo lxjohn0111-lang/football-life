@@ -5,7 +5,7 @@ A first-person 3D stickman football career game for the browser. You create one 
 - 7v7 association football on a 64 x 42 m pitch with 5 x 2 m goals.
 - Six venues: Community Ground, Town Stadium, Regional Stadium, Premier Arena, Continental Stadium and a Training Ground.
 - A full career loop: create a player, join a community club, train or play fixtures, read the match report, upgrade attributes, attract offers, transfer upwards.
-- Two live-switchable visual styles: **Classic** (pale ink drawing) and **Neobrutalist** (saturated, toon-shaded, 3 px outlines).
+- Two live-switchable visual styles for the 3D world: **Classic** (pale ink drawing) and **Neobrutalist** (saturated, toon-shaded, 3 px outlines), and one arcade-style interface (see Interface).
 - Everything is built at load time from boxes, cylinders, spheres and cones. All sounds are synthesised with the Web Audio API and pre-rendered to buffers. No external art or audio files.
 
 ## Launching
@@ -42,8 +42,8 @@ One scheme is used everywhere (tutorial text, HUD hints, menus):
 | Right mouse | Pass to the highlighted teammate. A tap sends the right weight for the distance; holding briefly adds power. |
 | Space | With the ball: through pass into the highlighted teammate's run. Without it: call for the ball. |
 | E | Standing tackle: lunges at the ball if it is within about 3 m. A press during a cooldown or a pending first-time kick is held briefly and fires as soon as possible. |
-| C | Slide tackle (1.5 s cooldown, costs stamina) |
-| Esc | Pause (Resume, Controls, Settings, Visual Style, Match Statistics, Exit) |
+| C | Slide tackle. Always fires when pressed: no cooldown for you, it cuts into a tackle, plays the ball loose if you have it, and a press while you are still sliding or getting up goes as soon as you can. |
+| Esc | Pause (Resume, Settings, Controls, Visual Style, Stats, Exit) |
 
 - Click the game to capture the mouse (pointer lock is requested inside the click). After Esc, browsers can refuse to re-capture for about a second; the game stays paused and asks you to click again.
 - If pointer lock is unavailable or refused, you can play with **drag-look**: hold a mouse button and drag, or use the arrow keys. All other controls are unchanged.
@@ -69,7 +69,7 @@ The game runs in mobile browsers with on-screen touch controls. They appear auto
 | SHOOT | Hold to charge, release to strike; sliding your thumb on the button fine-tunes the aim |
 | PASS | Pass to the ringed teammate (hold briefly for more power) |
 | THRU / CALL | Through pass with the ball; call for the ball without it |
-| TACKLE / SLIDE | Replace SHOOT and PASS while an opponent has the ball (they dim while on cooldown) |
+| TACKLE / SLIDE | Replace SHOOT and PASS while an opponent has the ball (and stay for a moment after, so they never change under your thumb); with a loose ball the third button is SLIDE |
 | II | Pause |
 
 - Tap to start (there is no mouse capture on touch screens). Where the browser allows it the game goes fullscreen and locks to landscape; it is best played sideways, and a hint says so in portrait. In portrait the field-of-view setting applies to the long, vertical side and the wide projection is not used.
@@ -155,6 +155,17 @@ Starts at 6.0, clamped to 1.0-10.0. Goals and assists give large increases; succ
 - **Saving:** the career is saved after creation, training, completed matches, upgrades, transfers and season changes. The save is versioned, checksummed and keeps a backup of the previous good save; a damaged save is restored from the backup automatically, and a clear message is shown if saving fails. Starting a new career asks for confirmation before overwriting.
 
 **Quick Match** uses exactly the same football systems with any two clubs and never changes career progress.
+
+## Interface
+
+Every menu, the HUD and the touch controls share one design system (`src/ui/styles.css`): shared tokens for colours (dark navy base, a bright yellow primary, indigo secondary, cyan accent, green/red feedback), corner radii, 3 px dark borders, a solid "3D" depth under buttons, one bold rounded display font and a clean body font, button heights and a spacing scale. It is the same in both visual styles.
+
+- **One obvious action per screen.** The main menu sits over the live match with a large PLAY button (continue your career, or start one) above Quick Match and Training, with Settings, How to Play and Tutorial as smaller buttons. The career hub leads with the next match and a big PLAY MATCH button (or the transfer offers, or the start of the next season); player, table, transfers and history are tabs instead of one dense page, and unspent upgrade points are flagged.
+- **Buttons** have idle, hover (lift and slight scale), pressed (sinks into its shadow) and disabled states; the primary button has a moving highlight. Selected cards lift and glow, segmented choices and tabs animate, screens slide and fade in over 0.2-0.3 s.
+- **Custom controls only**: club pickers with arrows and a club grid, position and club cards, colour swatches, a number stepper, segmented on/off switches and styled sliders. No native selects, colour pickers or default sliders.
+- **Result screens** open with a big result (YOU WIN! / DRAW / DEFEAT), the score with crests, your rating counting up, three key stats and the XP reward popping in, then one primary button (Continue, or Play again after a quick match). More stats are one tap away.
+- **HUD**: score bug and clock top centre, rating and stamina top left, radar bottom right, short hints at the bottom; goals, notes and the score punch in with short animations.
+- **Sounds**: soft hover ticks, click and confirm sounds, an error buzz, a swoosh between screens and a reward chime, all synthesised like the rest of the audio.
 
 ## Visual styles
 

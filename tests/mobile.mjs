@@ -163,7 +163,7 @@ const fits = (page, sel) => page.evaluate((sel) => { const e = document.querySel
   await page.screenshot({ path: `${OUT}/m_menu_port.png` });
   const w = await page.evaluate(() => ({ sw: document.documentElement.scrollWidth, cw: document.documentElement.clientWidth }));
   check('no horizontal overflow in portrait', w.sw <= w.cw, JSON.stringify(w));
-  await page.tap('[data-act="new"]');
+  await page.tap('[data-act="play"]'); // no career yet: PLAY starts one
   await page.waitForTimeout(500);
   await page.screenshot({ path: `${OUT}/m_new_port.png` });
   await page.tap('[data-act="go"]');

@@ -125,6 +125,32 @@ function blip(f, dur, seed) {
   void seed;
   return normalize(b, 0.5);
 }
+// short UI tones: [frequency start, frequency end, start time, duration, level]
+function tones(notes, len) {
+  const n = Math.floor(SR * len), b = new Float32Array(n);
+  for (const [f0, f1, t0, d, lv] of notes) {
+    let ph = 0;
+    const i0 = Math.floor(t0 * SR), i1 = Math.min(n, Math.floor((t0 + d) * SR));
+    for (let i = i0; i < i1; i++) {
+      const t = (i - i0) / SR, u = t / d;
+      ph += (f0 + (f1 - f0) * u) / SR;
+      const env = Math.min(1, t / 0.004) * Math.exp(-u * 4);
+      b[i] += (Math.sin(2 * Math.PI * ph) + 0.25 * Math.sin(4 * Math.PI * ph)) * env * lv;
+    }
+  }
+  return normalize(b, 0.5);
+}
+function swoosh(len) {
+  const n = Math.floor(SR * len), b = new Float32Array(n);
+  let lp = 0, s = 12345;
+  for (let i = 0; i < n; i++) {
+    s = (s * 1664525 + 1013904223) >>> 0;
+    const u = i / n, k = 0.04 + 0.5 * Math.sin(Math.PI * u) ** 2;
+    lp += ((s / 4294967296) * 2 - 1 - lp) * k;
+    b[i] = lp * Math.sin(Math.PI * u);
+  }
+  return normalize(b, 0.35);
+}
 function shout(seed) {
   // a short "hey!" style call made from a formant-filtered buzz
   const n = Math.floor(SR * 0.28), src = new Float32Array(n);
@@ -178,6 +204,13 @@ export class AudioSystem {
       ui: blip(1400, 0.06, 13),
       ack: blip(1900, 0.09, 14),
       shout: shout(15),
+      // interface: hover tick, click pop, confirm chime, error buzz, screen swoosh, reward sparkle
+      uiHover: tones([[2600, 2400, 0, 0.025, 0.5]], 0.03),
+      uiClick: tones([[900, 520, 0, 0.07, 1]], 0.08),
+      uiConfirm: tones([[660, 660, 0, 0.09, 0.9], [990, 990, 0.07, 0.16, 1]], 0.25),
+      uiError: tones([[300, 280, 0, 0.1, 1], [220, 200, 0.1, 0.16, 1]], 0.28),
+      uiSwoosh: swoosh(0.22),
+      uiReward: tones([[784, 784, 0, 0.1, 0.8], [988, 988, 0.08, 0.1, 0.8], [1319, 1319, 0.16, 0.3, 1]], 0.48),
     };
     for (const [k, data] of Object.entries(defs)) {
       const buf = c.createBuffer(1, data.length, SR);

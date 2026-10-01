@@ -29,19 +29,21 @@ await page.waitForTimeout(500);
 await page.keyboard.press('Escape');
 await page.waitForTimeout(400);
 await page.screenshot({ path: `${OUT}/flow_pause.png` });
-const pausedMenu = await page.getByText('Match Statistics').count();
+const pausedMenu = await page.locator('[data-act="stats"]').count();
 await clickText('Resume');
 await page.waitForTimeout(300);
 // fast-forward the match deterministically
-await page.evaluate(() => { const a = window.__ft; let n = 0; while (a.session && a.session.match.phase !== 'fulltime' && n < 120 * 200) { a.session.match.step(1 / 120); n++; } });
-await page.waitForTimeout(4000);
+await page.evaluate(() => { const a = window.__ft; let n = 0; while (a.session && a.session.match.phase !== 'fulltime' && n < 120 * 700) { a.session.match.step(1 / 120); n++; } });
+// the result screen follows the full-time whistle (frames are slow under software rendering)
+await page.waitForFunction(() => /Your rating/i.test(document.querySelector('.screens').textContent), null, { timeout: 90000 }).catch(() => {});
+await page.waitForTimeout(800);
 await page.screenshot({ path: `${OUT}/flow_report.png` });
-const hasReport = await page.getByText('MATCH RATING').count();
+const hasReport = await page.getByText('Your rating').count();
 // open the report twice must not double commit
 const before = await page.evaluate(() => window.__ft.store.career.totals.apps);
 await page.evaluate(() => { const a = window.__ft; if (a.session) a.screens.report(a.session, { career: true, matchId: 'x', fx: a.store.career.season.fixtures[0] }); });
 const after = await page.evaluate(() => window.__ft.store.career.totals.apps);
-await clickText('Continue to Career Hub');
+await page.click('[data-act="cont"]'); await page.waitForTimeout(400);
 await page.screenshot({ path: `${OUT}/flow_hub2.png` });
 const round = await page.evaluate(() => window.__ft.store.career.season.round);
 console.log({ pausedMenu, hasReport, appsBefore: before, appsAfterReopen: after, round });
@@ -52,7 +54,7 @@ await page.screenshot({ path: `${OUT}/flow_style.png` });
 // reload: career persists
 await page.reload();
 await page.waitForTimeout(1500);
-const cont = await page.getByText('Continue Career').count();
+const cont = await page.getByText('Season 1').count();
 console.log({ continueAfterReload: cont });
 console.log(errors.length ? 'ERRORS:\n' + errors.join('\n') : 'no errors');
 await browser.close();

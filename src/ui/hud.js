@@ -95,7 +95,12 @@ export class Hud {
     this.teamB.textContent = m.teams[1].short;
     this.teamA.style.setProperty('--kit', s.kitA || '#c00');
     this.teamB.style.setProperty('--kit', s.kitB || '#00c');
-    this.score.textContent = `${m.teams[0].score} - ${m.teams[1].score}`;
+    const sc = `${m.teams[0].score} - ${m.teams[1].score}`;
+    if (sc !== this.score.textContent) {
+      // the scoreline punches when it changes
+      if (this.score.textContent !== '0 - 0' || sc !== '0 - 0') { this.score.classList.remove('bump'); void this.score.offsetWidth; this.score.classList.add('bump'); }
+      this.score.textContent = sc;
+    }
     this.clock.textContent = s.clockText ?? m.displayClock;
     this.phase.textContent = s.phaseText || '';
     if (h) {
@@ -147,9 +152,10 @@ export class Hud {
     const map = (x, z) => [pad + (PITCH.HW + z * att) * sx, pad + (PITCH.HL - x * att) * sy];
     const st = s.style;
     c.clearRect(0, 0, W, H);
-    c.fillStyle = st === 'neo' ? 'rgba(40,180,70,0.85)' : 'rgba(250,250,245,0.82)';
+    void st;
+    c.fillStyle = 'rgba(28,120,64,0.88)';
     c.fillRect(0, 0, W, H);
-    c.strokeStyle = st === 'neo' ? '#fff' : '#222';
+    c.strokeStyle = 'rgba(255,255,255,0.85)';
     c.lineWidth = 1;
     c.strokeRect(pad, pad, W - pad * 2, H - pad * 2);
     c.beginPath(); c.moveTo(pad, H / 2); c.lineTo(W - pad, H / 2); c.stroke();
@@ -175,13 +181,13 @@ export class Hud {
       const yaw = s.camYaw;
       const fx = Math.sin(yaw), fz = Math.cos(yaw);
       const dx = fz * att, dy = -fx * att;
-      c.fillStyle = st === 'neo' ? '#ffe45c' : '#111';
+      c.fillStyle = '#ffc61a';
       c.beginPath();
       c.moveTo(x + dx * 9, y + dy * 9);
       c.lineTo(x - dy * 5 - dx * 3, y + dx * 5 - dy * 3);
       c.lineTo(x + dy * 5 - dx * 3, y - dx * 5 - dy * 3);
       c.closePath(); c.fill();
-      c.strokeStyle = st === 'neo' ? '#000' : '#fff'; c.stroke();
+      c.strokeStyle = '#070b1d'; c.lineWidth = 2; c.stroke();
     }
     const [bx, by] = map(m.ball.pos.x, m.ball.pos.z);
     c.fillStyle = '#fff'; c.strokeStyle = '#000'; c.lineWidth = 1.5;

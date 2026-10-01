@@ -100,7 +100,7 @@ const flag = (page) => page.evaluate(() => localStorage.getItem('firsttouch.tuto
   check('scripted player finishes every step', run.done && run.results.every((r) => !r.includes('timeout')), JSON.stringify(run.results));
   check('whole tutorial under two minutes', run.t < 120, `${run.t} s of play, ${run.stars} stars`);
   await page.evaluate(() => { window.__ft.session.paused = false; });
-  await page.waitForFunction(() => /WARM-UP COMPLETE|TIME'S UP/.test(document.querySelector('.screens').textContent), null, { timeout: 60000 });
+  await page.waitForFunction(() => /warm-up complete|time's up/i.test(document.querySelector('.screens').textContent), null, { timeout: 60000 });
   await page.waitForTimeout(400);
   await page.screenshot({ path: `${OUT}/tut_result_${style}.png` });
   check('result screen with stars', /★/.test(await text(page)) && /Start your career|Continue your career/.test(await text(page)));
@@ -131,7 +131,7 @@ const flag = (page) => page.evaluate(() => localStorage.getItem('firsttouch.tuto
     return { done: tut.done, t: +tut.t.toFixed(1), steps: tut.results.length, timeUp: tut.timeUp };
   });
   check('an idle player is still done within two minutes', idle.done && idle.t <= 120.01, JSON.stringify(idle));
-  await page.waitForFunction(() => /WARM-UP COMPLETE|TIME'S UP/.test(document.querySelector('.screens').textContent), null, { timeout: 60000 });
+  await page.waitForFunction(() => /warm-up complete|time's up/i.test(document.querySelector('.screens').textContent), null, { timeout: 60000 });
   check('idle run still reaches the result screen', true);
   await ctx.close();
 }

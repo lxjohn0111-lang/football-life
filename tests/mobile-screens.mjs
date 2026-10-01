@@ -18,7 +18,8 @@ for (const [w, h, tag] of [[844, 390, 'land'], [390, 844, 'port']]) {
   console.log(tag, 'settings overflow sideways:', await over());
   await page.screenshot({ path: `tests/out/m2_settings_${tag}.png` });
   await page.tap('[data-act="back"]'); await page.waitForTimeout(300);
-  await page.tap('[data-act="style"]'); await page.waitForTimeout(2500);
+  await page.tap('[data-act="settings"]'); await page.waitForTimeout(400);
+  await page.tap('[data-tab="video"]'); await page.tap('[data-act="preview"]'); await page.waitForTimeout(2500);
   console.log(tag, 'style overflow sideways:', await over());
   await page.screenshot({ path: `tests/out/m2_style_${tag}.png` });
   // short quick match straight to the report
@@ -26,7 +27,7 @@ for (const [w, h, tag] of [[844, 390, 'land'], [390, 844, 'port']]) {
   await page.waitForTimeout(2500);
   await page.tap('.screen'); await page.waitForTimeout(600);
   await page.evaluate(() => { const a = window.__ft, m = a.session.match; let n = 0; while (m.phase !== 'fulltime' && n++ < 120 * 120) { m.step(1 / 120); if (m.phase === 'halftime' || m.phase === 'goal') m.requestSkip(); } m.phaseT = 5; });
-  await page.waitForFunction(() => /Match Report/.test(document.querySelector('.screens').textContent), null, { timeout: 60000 });
+  await page.waitForFunction(() => /Your rating/i.test(document.querySelector('.screens').textContent), null, { timeout: 60000 });
   await page.waitForTimeout(400);
   console.log(tag, 'report overflow sideways:', await over());
   await page.screenshot({ path: `tests/out/m2_report_${tag}.png` });

@@ -15,9 +15,9 @@ const click = async (t) => { await page.getByText(t, { exact: false }).first().c
 const out = {};
 // quick match setup screen
 await click('Quick Match');
-await page.selectOption('#q-home', 'mancity');
-await page.selectOption('#q-away', 'realmadrid');
-await page.selectOption('#q-role', 'W');
+await page.click('[data-pick="home"]'); await page.click('#club-grid [data-club="mancity"]');
+await page.click('[data-pick="away"]'); await page.click('#club-grid [data-club="realmadrid"]');
+await page.click('[data-key="role"] [data-v="W"]');
 await page.screenshot({ path: 'tests/out/ui_quick.png' });
 await click('Kick Off');
 await page.mouse.click(640, 360);
@@ -27,6 +27,7 @@ out.humanRole = await page.evaluate(() => window.__ft.session.human.role);
 await page.keyboard.press('Escape');
 await page.waitForTimeout(300);
 await click('Settings');
+await page.click('[data-tab="video"]');
 await page.click('[data-key="quality"] [data-v="low"]');
 await page.click('[data-key="bob"] [data-v="false"]');
 await page.locator('#s-fov').fill('100');
@@ -38,7 +39,7 @@ await page.waitForTimeout(500);
 await page.locator('.preview[data-s="neo"]').click();
 await page.waitForTimeout(300);
 out.style = await page.evaluate(() => [window.__ft.style, localStorage.getItem('firsttouch.style')]);
-await click('Back');
+await click('Done');
 await click('Exit to Main Menu');
 await page.waitForTimeout(400);
 // training menu
