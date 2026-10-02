@@ -1,6 +1,7 @@
 // Versioned career save with a backup copy and corruption detection.
 import { CAREER_VERSION } from './career.js';
 import { clubById, LEGACY_IDS } from './clubs.js';
+import { storage } from '../core/storage.js';
 
 const KEY = 'firsttouch.career';
 const BACKUP = 'firsttouch.career.backup';
@@ -53,13 +54,13 @@ export class CareerStore {
 
   load() {
     let raw = null;
-    try { raw = localStorage.getItem(KEY); } catch (e) { this.notice = { bad: true, text: 'Saving is unavailable in this browser (storage blocked). Progress will not persist.' }; return; }
+    try { raw = storage.getItem(KEY); } catch (e) { this.notice = { bad: true, text: 'Saving is unavailable in this browser (storage blocked). Progress will not persist.' }; return; }
     if (!raw) return;
     try {
       this.career = parse(raw);
     } catch (e) {
       let backup = null;
-      try { backup = localStorage.getItem(BACKUP); } catch (e2) { /* ignore */ }
+      try { backup = storage.getItem(BACKUP); } catch (e2) { /* ignore */ }
       try {
         if (!backup) throw new Error('no backup');
         this.career = parse(backup);
@@ -79,15 +80,16 @@ export class CareerStore {
     try {
       const data = JSON.stringify(this.career);
       const env = JSON.stringify({ version: CAREER_VERSION, savedAt: Date.now(), sum: checksum(data), data });
-      const prev = localStorage.getItem(KEY);
+      const prev = storage.getItem(KEY);
       if (prev) {
         // keep the last good save as the backup
-        try { parse(prev); localStorage.setItem(BACKUP, prev); } catch (e) { /* previous save unreadable: keep old backup */ }
+        try { parse(prev); storage.setItem(BACKUP, prev); } catch (e) { /* previous save unreadable: keep old backup */ }
       }
-      localStorage.setItem(KEY, env);
+      storage.setItem(KEY, env);
       return { ok: true };
     } catch (e) {
-      return { ok: false, error: e && e.name === 'QuotaExceededError' ? 'Browser storage is full.' : 'Browser storage is unavailable.' };
+      const full = e && (e.name === 'QuotaExceededError' || /dataLimitExc/i.test(e.code || e.message || ''));
+      return { ok: false, error: full ? 'The save storage is full.' : 'Saving is unavailable right now.' };
     }
   }
 
@@ -95,6 +97,6 @@ export class CareerStore {
 
   erase() {
     this.career = null;
-    try { localStorage.removeItem(KEY); } catch (e) { /* ignore */ }
+    try { storage.removeItem(KEY); } catch (e) { /* ignore */ }
   }
 }

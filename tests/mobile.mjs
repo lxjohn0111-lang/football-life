@@ -140,6 +140,36 @@ const fits = (page, sel) => page.evaluate((sel) => { const e = document.querySel
   await page.waitForFunction(() => window.__tk, null, { timeout: 8000 }).catch(() => {});
   check('TACKLE button tackles', await page.evaluate(() => window.__tk));
 
+  // 5b) CALL is there whenever your team has the ball: a teammate dribbling, the teammate's
+  // pass in flight, a teammate's throw-in, and straight after your team wins it back
+  const callIn = async (setup) => {
+    await page.evaluate(setup);
+    await page.waitForFunction(() => document.querySelector('.tc-c').textContent === 'CALL', null, { timeout: 8000 }).catch(() => {});
+    return page.evaluate(() => { const c = document.querySelector('.tc-c'); return c.textContent === 'CALL' && !c.classList.contains('off'); });
+  };
+  const callChecks = {};
+  callChecks.teammate = await callIn(() => {
+    const a = window.__ft, s = a.session, m = s.match, h = s.human;
+    m.step = m.step.__orig || m.step;
+    const t = m.teams[h.team].players.find((p) => p !== h && !p.isGK);
+    window.__mate = t;
+    if (m.ball.owner) m.loseControl('loose');
+    m.ball.place(t.pos.x + Math.sin(t.yaw) * 0.4, t.pos.z + Math.cos(t.yaw) * 0.4); m.ball.state = 'free';
+    for (let i = 0; i < 60 && m.ball.owner !== t; i++) m.step(1 / 120);
+  });
+  callChecks.passInFlight = await callIn(() => {
+    const m = window.__ft.session.match, t = window.__mate;
+    if (m.ball.owner) m.loseControl('loose');
+    m.ball.lastTouch = t; m.possTeam = t.team; m.ball.vel.set(6, 0, 2); m.ball.state = 'free';
+  });
+  callChecks.teammateRestart = await callIn(() => {
+    const s = window.__ft.session, m = s.match, h = s.human;
+    const sp = m.ball.pos.clone(); sp.x = window.__mate.pos.x; sp.y = 0; sp.z = 21;
+    m.setupRestart({ type: 'throwin', team: h.team, spot: sp });
+    if (m.restart && m.restart.taker === h) m.restart.taker = window.__mate;
+  });
+  check('CALL shown whenever your team has the ball', Object.values(callChecks).every(Boolean), JSON.stringify(callChecks));
+
   // 6) pause button and resume
   const [px, py] = await center(page, '.tc-pause');
   await touch('touchStart', [[px, py, 8]]); await touch('touchEnd', []);

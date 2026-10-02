@@ -226,9 +226,12 @@ export class AudioSystem {
   setMuted(m) { this.muted = m; if (m) this.suspend(); else this.resume(); }
 
   setVolumes(v) { Object.assign(this.vol, v); this.applyVolumes(); }
+  // the hosting platform can silence the game (its mute setting, or while an ad plays);
+  // that wins over the in-game volume
+  setPlatformMute(m) { this.platformMute = !!m; this.applyVolumes(); }
   applyVolumes() {
     if (!this.ctx) return;
-    this.master.gain.value = this.vol.master;
+    this.master.gain.value = this.platformMute ? 0 : this.vol.master;
     this.sfx.gain.value = this.vol.sfx;
     this.crowd.gain.value = this.vol.crowd;
   }

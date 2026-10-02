@@ -83,17 +83,27 @@ export class TouchControls {
     const m = session.match, h = session.human;
     if (!h) return;
     const b = m.ball, o = b.owner;
-    let layout = 'loose';
-    if (o === h || (m.phase === 'restart' && m.restart && m.restart.taker === h)) layout = 'attack';
+    let layout;
+    const r = m.phase === 'restart' && m.restart;
+    if (o === h || (r && r.taker === h)) layout = 'attack';
     else if (o && o.team !== h.team) layout = 'defend';
-    else if (o) layout = 'call';
+    else if (o) layout = 'call'; // a teammate (or our keeper) has the ball
+    else {
+      // loose ball: still our team's ball (a teammate's pass or shot in flight, a ball you
+      // just played, a teammate's throw-in or free kick) -> CALL; contested -> SLIDE
+      const lt = b.lastTouch;
+      const ours = r ? r.team === h.team : m.possTeam === h.team && !!lt && lt.team === h.team;
+      layout = ours ? 'call' : 'loose';
+    }
     // the defensive buttons stay put for a moment after the opponent loses the ball, so a
-    // tap never lands on a button that has just changed under the finger
+    // tap never lands on a button that has just changed under the finger (only while the
+    // ball is loose: once your team has it, CALL is there straight away)
     if (layout === 'defend') this.defendUntil = m.time + 0.8;
-    else if (layout !== 'attack' && m.time < (this.defendUntil || 0)) layout = 'defend';
+    else if (layout === 'loose' && m.time < (this.defendUntil || 0)) layout = 'defend';
     if (layout !== this.layout) { this.layout = layout; this.applyLayout(); }
-    // cooldown feedback on the tackle button (a slide is never on cooldown)
+    // cooldown feedback on the tackle button (a slide is never on cooldown) and on CALL
     if (layout === 'defend') this.btn.a.classList.toggle('cool', m.time < h.tackleReadyAt);
+    if (layout === 'call') this.btn.c.classList.toggle('cool', m.time < h.requestReadyAt);
   }
 
   applyLayout() {

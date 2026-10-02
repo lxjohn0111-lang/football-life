@@ -57,6 +57,8 @@ export class HumanController {
     }
     if (taker) { this.restartControls(); return; }
     if (m.phase !== 'playing') {
+      // calling for the ball works during stoppages and a teammate's restart too
+      if (this.buffer.some((e) => e.type === 'through')) { this.requestPass(); this.buffer = this.buffer.filter((e) => e.type !== 'through'); }
       // keep releases so held charges don't stick, drop other presses
       this.buffer = this.buffer.filter((e) => now - e.t < RULES.INPUT_BUFFER && !e.type.endsWith('Up'));
       return;

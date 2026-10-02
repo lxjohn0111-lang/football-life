@@ -19,6 +19,7 @@ import { CoachCard } from './coach.js';
 import { icon } from './icons.js';
 import { defaultPlayer } from '../career/teams.js';
 import { resolveKits } from '../render/palette.js';
+import { platform } from '../platform/crazygames.js';
 
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const f1 = (x) => (Math.round(x * 10) / 10).toFixed(1);
@@ -385,12 +386,13 @@ export class Screens {
               : '<button class="btn primary lg" data-act="menu">Continue</button>'}
         </div>
       </div>`, {
-      cont: () => { app.endSession(); this.hub(); },
-      again: () => { app.endSession(); app.startQuickMatch(this.lastQuick || {}); },
-      change: () => { app.endSession(); this.quickMatch(); },
-      menu: () => { app.endSession(); this.mainMenu(); },
+      cont: () => this.afterMatch(el, () => { app.endSession(); this.hub(); }),
+      again: () => this.afterMatch(el, () => { app.endSession(); app.startQuickMatch(this.lastQuick || {}); }),
+      change: () => this.afterMatch(el, () => { app.endSession(); this.quickMatch(); }),
+      menu: () => this.afterMatch(el, () => { app.endSession(); this.mainMenu(); }),
     });
     this.sfx(outcome === 'win' ? 'uiReward' : 'uiConfirm', 0.4);
+    if (outcome === 'win') platform.happytime();
     // the rating counts up
     const num = el.querySelector('#r-num');
     const t0 = performance.now(), target = rep.rating;
@@ -400,6 +402,13 @@ export class Screens {
       if (k < 1 && num.isConnected) requestAnimationFrame(tick);
     };
     requestAnimationFrame(tick);
+  }
+
+  // leaving a match's result screen is the natural break for a CrazyGames midgame ad;
+  // without the SDK (or with no ad to show) it goes straight on
+  afterMatch(el, go) {
+    el.querySelectorAll('button').forEach((b) => { b.disabled = true; });
+    platform.midgameAd(go);
   }
 
   // ------------------------------------------------------- quick match
@@ -578,6 +587,7 @@ export class Screens {
     app.input.active = false;
     app.input.exitLock();
     markTutorial('done');
+    platform.happytime();
     const r = tut.result();
     const stars = Array.from({ length: r.total }, (_, i) => `<i class="${i < r.stars ? '' : 'off'}" style="animation-delay:${0.25 + i * 0.08}s">★</i>`).join('');
     const time = `${Math.floor(r.time / 60)}:${String(Math.floor(r.time % 60)).padStart(2, '0')}`;

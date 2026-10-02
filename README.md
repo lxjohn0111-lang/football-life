@@ -29,6 +29,15 @@ npm test                # headless simulation test suite
 
 three.js r186 is vendored unmodified in `vendor/three/` (MIT, see `vendor/three/LICENSE`) and bundled by esbuild into `dist/game.js`. A browser with WebGL2 is required.
 
+**CrazyGames build:**
+
+```sh
+npm run crazygames      # rebuilds, then writes crazygames/upload/ (index.html + game.js) and crazygames/first-touch-crazygames.zip
+npm run covers          # renders the three cover images into crazygames/covers/
+```
+
+The upload's `index.html` loads the CrazyGames HTML5 SDK v3. `crazygames/SUBMISSION.md` lists what to upload, the portal fields (description, controls, tags) and the settings to turn on, above all **Progress Save**, which the game's saves need. Test the build locally at `http://localhost:8080/crazygames/upload/index.html` with `node server.js` running.
+
 ## Controls
 
 One scheme is used everywhere (tutorial text, HUD hints, menus):
@@ -68,8 +77,8 @@ The game runs in mobile browsers with on-screen touch controls. They appear auto
 | Right thumb | Drag anywhere on the right side to look and aim |
 | SHOOT | Hold to charge, release to strike; sliding your thumb on the button fine-tunes the aim |
 | PASS | Pass to the ringed teammate (hold briefly for more power) |
-| THRU / CALL | Through pass with the ball; call for the ball without it |
-| TACKLE / SLIDE | Replace SHOOT and PASS while an opponent has the ball (and stay for a moment after, so they never change under your thumb); with a loose ball the third button is SLIDE |
+| THRU / CALL | Through pass with the ball; CALL for the ball whenever your team has it (a teammate on the ball, a pass on its way, or your team's throw-in, corner or free kick) |
+| TACKLE / SLIDE | Replace SHOOT and PASS while an opponent has the ball (and stay for a moment after if the ball runs loose, so they never change under your thumb; when your team wins the ball CALL comes back at once); with a loose ball the third button is SLIDE |
 | II | Pause |
 
 - Tap to start (there is no mouse capture on touch screens). Where the browser allows it the game goes fullscreen and locks to landscape; it is best played sideways, and a hint says so in portrait. In portrait the field-of-view setting applies to the long, vertical side and the wide projection is not used.
@@ -152,7 +161,7 @@ Starts at 6.0, clamped to 1.0-10.0. Goals and assists give large increases; succ
 - **Pacing:** with consistently strong performances (ratings around 7.2-8.0) the elite tier takes roughly 20-25 matches; middling form stalls around tiers 3-4. Time passing and training alone never earn a move. One poor match cannot erase a good run (rolling form plus reputation).
 - **Contracts:** 2-3 seasons. When a contract expires your club always offers a renewal (and a lower-tier club may offer regular football after a poor season), so there is always a playable next step.
 - **Records:** appearances, goals, assists, average rating, pass accuracy, tackles and trophies across the whole career and per season, plus a timeline of debuts, first goal, first assist, transfers, windows and trophies.
-- **Saving:** the career is saved after creation, training, completed matches, upgrades, transfers and season changes. The save is versioned, checksummed and keeps a backup of the previous good save; a damaged save is restored from the backup automatically, and a clear message is shown if saving fails. Starting a new career asks for confirmation before overwriting.
+- **Saving:** the career is saved after creation, training, completed matches, upgrades, transfers and season changes. The save is versioned, checksummed and keeps a backup of the previous good save; a damaged save is restored from the backup automatically, and a clear message is shown if saving fails. Starting a new career asks for confirmation before overwriting. Saves go to the browser's localStorage, or on CrazyGames to the SDK's data module (see CrazyGames below).
 
 **Quick Match** uses exactly the same football systems with any two clubs and never changes career progress.
 
@@ -188,6 +197,15 @@ Every surface belongs to a shared material role (pitch, lines, stands, crowd, sh
 - **AI** teammates and opponents use the same movement limits, contact rules and cooldowns as you: formation zones that shift with the ball, one presser plus a cover player, marking, support triangles, forward runs, anticipation of where the ball will be, separation steering and stuck recovery. Tiers change reaction time and decision quality only. The difficulty setting additionally handicaps only the team playing against you (see Settings and difficulty). Keepers position on the ball-goal line, react after a delay, dive with limited reach, catch or parry only on physical contact, and distribute within a few seconds.
 - **Rendering** (`src/render`) uses three.js with custom shaders. Edges are fat screen-space lines computed per primitive on the GPU: crease edges are always drawn, smooth edges only where they form a silhouette from the current viewpoint, so spheres and cylinders get clean outlines. All players and the ball are one mesh plus one edge batch whose rigid parts are posed from a float texture; static stadium geometry (including thousands of spectators, animated in the vertex shader) is merged into one mesh and one edge batch. A match typically renders in 12-16 draw calls.
 - **Animation** is procedural: feet are planted in world space from the simulation's gait phase (no foot sliding), legs and arms use two-bone IK, and kicks, tackles, slides, keeper dives, throw-ins, falls and celebrations are pose layers driven by the same action timers as the simulation.
+## CrazyGames
+
+The CrazyGames build (see Launching) uses the platform's HTML5 SDK v3 through `src/platform/crazygames.js`; every other build has no SDK on the page and runs exactly as described above.
+
+- **Saving:** all saves (career and backup, settings, visual style, tutorial state) go through one small storage layer (`src/core/storage.js`). On CrazyGames it uses the SDK's data module, which keeps guests' saves in the browser and logged-in players' saves in their account. Saves made earlier in the same browser's localStorage are copied in once. If the data module is off (the portal's Progress Save setting) or the SDK can't be reached, the game saves to localStorage instead.
+- **Events:** loading start/stop around start-up; gameplay start/stop while a match, drill or the tutorial is actually being played (a pause for lost focus doesn't count as a stop); happytime on a win and at the end of the tutorial.
+- **Ads:** one midgame ad when you leave a match's result screen, never during play; the game is muted while it plays and continues when it ends or fails.
+- **Platform:** the platform's mute setting silences the game; the game doesn't request fullscreen itself (the platform has its own button); the context menu is disabled.
+
 ## Tests
 
 ```sh
@@ -199,7 +217,7 @@ node tests/pacing.mjs         # matches needed to reach the elite tier by form
 node tests/shooting.mjs 1     # shot placement vs keeper at a given tier
 ```
 
-Browser checks (require Playwright with Chromium, `node server.js` running) write screenshots to `tests/out/`: `tests/browser.mjs` (venues and styles), `tests/flow.mjs` (create career → match → report → hub, reload persistence), `tests/ui.mjs` (menus, pause, settings), `tests/drills.mjs`, `tests/fulltime.mjs`, `tests/styleswitch.mjs` (mid-match style switch leaves the simulation identical), `tests/robust.mjs` (focus loss, corrupted save), `tests/fp.mjs`, `tests/poses.mjs`, `tests/net.mjs`, `tests/bigvenues.mjs [classic|neo]`, `tests/fov.mjs` (normal and wide field of view), `tests/possession.mjs` (possession glow in both styles), `tests/controls.mjs` (real keyboard/mouse: E tackles, W+Shift dribbling while swinging the view, FOV slider), `tests/mobile.mjs [classic|neo]` (phone emulation with real multi-touch: menus fit, tap to play, stick, look, both thumbs at once, SHOOT/PASS/TACKLE, pause; landscape and portrait), `tests/mobile-screens.mjs` (settings, visual style and match report on phone screens), `tests/replay.mjs [classic|neo]` (scores real goals: the replay starts after the celebration with the match frozen, the drone stays above and away from the player, it ends on its own, Skip and any action end it at once, the kick-off follows, and none with the setting off), `tests/ink.mjs [classic|neo] [port]` (players from 4 to 60 m, players standing one behind another, and a far stand: no see-through outlines, no solid ink), `tests/anim.mjs [port]` (frame-to-frame jumps of every body part over a match), `tests/models.mjs [classic|neo] [home] [away] [high|medium|low]` (close-ups of the player line-up, faces, boots, houses, trees, floodlights and stands), `tests/tutorial.mjs [classic|neo]` (first visit shows the tutorial, a scripted player completes it inside two minutes, an idle player is still done in time, the result screen, never shown again after finishing or skipping, skip from the start card, the pause menu and the coach card on phones). Automated browsers don't get the first-run tutorial unless the URL has `?tutorial`.
+Browser checks (require Playwright with Chromium, `node server.js` running) write screenshots to `tests/out/`: `tests/browser.mjs` (venues and styles), `tests/flow.mjs` (create career → match → report → hub, reload persistence), `tests/ui.mjs` (menus, pause, settings), `tests/drills.mjs`, `tests/fulltime.mjs`, `tests/styleswitch.mjs` (mid-match style switch leaves the simulation identical), `tests/robust.mjs` (focus loss, corrupted save), `tests/fp.mjs`, `tests/poses.mjs`, `tests/net.mjs`, `tests/bigvenues.mjs [classic|neo]`, `tests/fov.mjs` (normal and wide field of view), `tests/possession.mjs` (possession glow in both styles), `tests/controls.mjs` (real keyboard/mouse: E tackles, W+Shift dribbling while swinging the view, FOV slider), `tests/mobile.mjs [classic|neo]` (phone emulation with real multi-touch: menus fit, tap to play, stick, look, both thumbs at once, SHOOT/PASS/TACKLE, pause; landscape and portrait), `tests/mobile-screens.mjs` (settings, visual style and match report on phone screens), `tests/replay.mjs [classic|neo]` (scores real goals: the replay starts after the celebration with the match frozen, the drone stays above and away from the player, it ends on its own, Skip and any action end it at once, the kick-off follows, and none with the setting off), `tests/ink.mjs [classic|neo] [port]` (players from 4 to 60 m, players standing one behind another, and a far stand: no see-through outlines, no solid ink), `tests/anim.mjs [port]` (frame-to-frame jumps of every body part over a match), `tests/models.mjs [classic|neo] [home] [away] [high|medium|low]` (close-ups of the player line-up, faces, boots, houses, trees, floodlights and stands), `tests/crazygames.mjs` (after `npm run crazygames`: the upload build with a stand-in SDK, saves through the data module and back after a reload, earlier localStorage saves copied in, loading/gameplay events, focus-loss pauses, platform mute, happytime on a win, the midgame ad only when leaving the result screen and muted, a failing ad, and the localStorage fallbacks), `tests/tutorial.mjs [classic|neo]` (first visit shows the tutorial, a scripted player completes it inside two minutes, an idle player is still done in time, the result screen, never shown again after finishing or skipping, skip from the start card, the pause menu and the coach card on phones). Automated browsers don't get the first-run tutorial unless the URL has `?tutorial`.
 
 `node tests/human.mjs 4 ST 1 standard` takes the difficulty as a fifth argument and also reports the opposing team's pass completion, shots and goals.
 

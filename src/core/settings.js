@@ -1,4 +1,7 @@
-// Settings persisted in localStorage (separately from the career save).
+// Settings persisted in the game's storage (localStorage, or the CrazyGames data module),
+// separately from the career save.
+import { storage } from './storage.js';
+
 const KEY = 'firsttouch.settings.v1';
 const STYLE_KEY = 'firsttouch.style';
 
@@ -18,14 +21,14 @@ export const DEFAULT_SETTINGS = {
 };
 
 export function hasSavedSettings() {
-  try { return !!localStorage.getItem(KEY); } catch (e) { return false; }
+  try { return !!storage.getItem(KEY); } catch (e) { return false; }
 }
 
 // `touch`: the device has a touch screen as its main pointer (phones and tablets)
 export function loadSettings(touch = false) {
   const fresh = () => ({ ...DEFAULT_SETTINGS, ...(touch ? { sensitivity: TOUCH_SENSITIVITY } : {}) });
   try {
-    const raw = localStorage.getItem(KEY);
+    const raw = storage.getItem(KEY);
     if (!raw) return fresh();
     const s = { ...DEFAULT_SETTINGS, ...JSON.parse(raw) };
     // players still on the old default field of view move to the new one
@@ -40,11 +43,11 @@ export function loadSettings(touch = false) {
   }
 }
 export function saveSettings(s) {
-  try { localStorage.setItem(KEY, JSON.stringify(s)); return true; } catch (e) { return false; }
+  try { storage.setItem(KEY, JSON.stringify(s)); return true; } catch (e) { return false; }
 }
 export function loadStyle() {
-  try { const s = localStorage.getItem(STYLE_KEY); return s === 'neo' || s === 'classic' ? s : 'classic'; } catch (e) { return 'classic'; }
+  try { const s = storage.getItem(STYLE_KEY); return s === 'neo' || s === 'classic' ? s : 'classic'; } catch (e) { return 'classic'; }
 }
 export function saveStyle(s) {
-  try { localStorage.setItem(STYLE_KEY, s); } catch (e) { /* storage unavailable: choice lasts for this session */ }
+  try { storage.setItem(STYLE_KEY, s); } catch (e) { /* storage unavailable: choice lasts for this session */ }
 }

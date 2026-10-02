@@ -287,6 +287,17 @@ test('every slide press fires: after a slide, mid-tackle, on the ball, tired, ma
   for (let i = 0; i < 10; i++) { ctl.press('slide'); run(m, 0.05, () => { if (h.action && h.action.type === 'slide') any = true; }); }
   assert.ok(any, 'mashing slides');
 });
+test('calling for the ball works while a teammate takes a restart', () => {
+  const m = scene({ mates: ['CM'] });
+  const h = m.human, mate = m.teams[0].players.find((p) => !p.isHuman);
+  m.setupRestart({ type: 'throwin', team: 0, spot: new V3(0, 0, PITCH.HW) });
+  assert.equal(m.phase, 'restart');
+  assert.notEqual(m.restart.taker, h);
+  void mate;
+  m.humanCtl.press('through');
+  run(m, 0.05);
+  assert.ok(h.requestUntil > m.time, 'request registered during the restart');
+});
 test('the human\'s tackle reaches a carrier 2.5 m away and wins the ball', () => {
   let won = 0;
   for (let k = 0; k < 4; k++) {

@@ -10,16 +10,17 @@ import { startKick } from '../sim/actions.js';
 import { GeoBuilder } from '../render/geometry.js';
 import { R } from '../render/palette.js';
 import { makeSolidMaterial, makeEdgeMaterial, makeFlatMaterial } from '../render/shaders.js';
+import { storage } from '../core/storage.js';
 
 export const TUTORIAL_LIMIT = 120; // seconds of play, hard cap
 const KEY = 'firsttouch.tutorial';
 
 // finished or skipped once: never shown automatically again
 export function tutorialSeen() {
-  try { return !!localStorage.getItem(KEY); } catch (e) { return false; }
+  try { return !!storage.getItem(KEY); } catch (e) { return false; }
 }
 export function markTutorial(how) {
-  try { localStorage.setItem(KEY, how); } catch (e) { /* storage unavailable: it may show again next time */ }
+  try { storage.setItem(KEY, how); } catch (e) { /* storage unavailable: it may show again next time */ }
 }
 
 // say: what Coach Ada says; hint: [mouse & keyboard, touch]

@@ -16,6 +16,7 @@ import { CareerStore } from './career/save.js';
 import { prepareMatch } from './career/career.js';
 import { hashString } from './sim/rng.js';
 import { tutorialSeen } from './game/tutorial.js';
+import { platform } from './platform/crazygames.js';
 
 class App {
   constructor() {
@@ -60,7 +61,8 @@ class App {
     this.adapt = { on: this.params.has('adapt') || (!navigator.webdriver && !this.fpsCap), ema: 1 / 60, scale: 1, floor: 0.5, low: 0, high: 0, check: null };
 
     this.input.onPause = () => this.togglePause();
-    this.input.onLockLost = () => { if (this.session && !this.paused) this.pause(); };
+    // losing the mouse because the window lost focus is not the player taking a break
+    this.input.onLockLost = () => { if (this.session && !this.paused) this.pause(document.hasFocus() ? 'user' : 'blur'); };
     this.input.onLockGained = () => { if (this.session && this.awaitingLock) this.unpause(); };
     this.input.onLockError = () => { if (this.session && this.awaitingLock) { this.awaitingLock = false; this.screens.lockRefused(); } };
     document.addEventListener('visibilitychange', () => { if (document.hidden) this.onBlur(); else this.onFocus(); });
@@ -72,6 +74,11 @@ class App {
     for (const t of ['pointerdown', 'pointerup', 'touchend', 'click', 'keydown']) window.addEventListener(t, unlock, { capture: true });
     // no pinch-zoom of the game page on iOS
     document.addEventListener('gesturestart', (e) => e.preventDefault());
+    // no browser context menu anywhere in the game (text fields keep theirs)
+    document.addEventListener('contextmenu', (e) => { if (!(e.target.closest && e.target.closest('input'))) e.preventDefault(); });
+    // the hosting platform's mute setting (and its ads) silence the game
+    this.platform = platform;
+    platform.onMute((m) => this.audio.setPlatformMute(m));
 
     document.getElementById('boot')?.remove();
     const auto = this.params.get('auto');
@@ -115,7 +122,13 @@ class App {
     const playing = !!(this.session && this.session.human && !this.paused && !this.session.ended && !this.session.replay);
     this.touch.setVisible(this.input.touchMode && playing);
     if (this.touch.visible) this.touch.update(this.session);
+    this.updatePlatform();
     if (this.onFrame) this.onFrame(dt);
+  }
+
+  // the platform hears when real play starts and stops (pauses for lost focus don't count)
+  updatePlatform() {
+    platform.setGameplay(!!this.session && !this.session.ended && (!this.paused || this.pausedByBlur));
   }
 
   // Keeps matches smooth on weaker devices: if frames stay slow the render
@@ -161,7 +174,8 @@ class App {
   // phones: go fullscreen and landscape when play starts (best effort; many
   // browsers and embedded views refuse, and the game works either way)
   tryFullscreen() {
-    if (!this.input.touchMode || document.fullscreenElement || this.params.has('nofs')) return;
+    // on CrazyGames the platform has its own fullscreen button
+    if (!this.input.touchMode || document.fullscreenElement || this.params.has('nofs') || platform.active) return;
     const el = document.documentElement;
     try {
       const r = el.requestFullscreen && el.requestFullscreen({ navigationUI: 'hide' });
@@ -269,9 +283,10 @@ class App {
     if (!this.session) { this.screens.back(); return; }
     if (this.paused) this.resume(); else this.pause();
   }
-  pause() {
+  pause(reason = 'user') {
     if (!this.session || this.session.ended) return;
     this.paused = true;
+    this.pausedByBlur = reason === 'blur';
     this.session.setPaused(true);
     this.input.releaseAll();
     this.touch.setVisible(false);
@@ -298,6 +313,7 @@ class App {
   }
   unpause() {
     this.awaitingLock = false;
+    this.pausedByBlur = false;
     this.screens.clear();
     this.paused = false;
     if (this.session) this.session.setPaused(false);
@@ -305,7 +321,7 @@ class App {
   }
   onBlur() {
     this.audio.setMuted(true);
-    if (this.session && !this.paused && !this.session.ended) this.pause();
+    if (this.session && !this.paused && !this.session.ended) this.pause('blur');
   }
   onFocus() { this.audio.setMuted(false); if (this.paused) this.audio.suspend(); }
 
@@ -334,7 +350,11 @@ class App {
   }
 }
 
-function boot() {
+async function boot() {
+  // the CrazyGames SDK (when its script is on the page) is ready before anything is loaded,
+  // so the career and settings are read from the right place
+  await platform.init();
+  platform.loadingStart();
   try {
     new App();
   } catch (e) {
@@ -342,5 +362,6 @@ function boot() {
     const b = document.getElementById('boot');
     if (b) b.textContent = 'First Touch could not start: ' + e.message + ' (a browser with WebGL2 is required).';
   }
+  platform.loadingStop();
 }
 if (document.readyState === 'loading') window.addEventListener('DOMContentLoaded', boot); else boot();
