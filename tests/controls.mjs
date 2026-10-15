@@ -79,7 +79,7 @@ console.log('dribble had ball at start', d0, JSON.stringify(d1));
 console.log((await ev(() => window.__ftLog.slice(-14))).join('\n'));
 
 // 3) settings slider
-await page.keyboard.press('Escape');
+await page.keyboard.press('KeyP');
 await page.waitForTimeout(400);
 const fov = await ev(() => { window.__ft.screens.settings(true); const r = document.querySelector('#s-fov'); return { min: r.min, max: r.max, value: r.value, label: document.querySelector('#v-fov').textContent }; });
 console.log('fov slider', JSON.stringify(fov));

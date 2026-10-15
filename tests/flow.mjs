@@ -25,8 +25,8 @@ await clickText('Play Match');
 await page.waitForTimeout(500);
 await page.mouse.click(640, 360); // click to play
 await page.waitForTimeout(500);
-// pause with Escape, check menu, resume
-await page.keyboard.press('Escape');
+// pause with P (Esc is left to the browser), check menu, resume
+await page.keyboard.press('KeyP');
 await page.waitForTimeout(400);
 await page.screenshot({ path: `${OUT}/flow_pause.png` });
 const pausedMenu = await page.locator('[data-act="stats"]').count();

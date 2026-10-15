@@ -42,7 +42,7 @@ html, body { overscroll-behavior: none; }
 .hidden { display: none !important; }
 .ico { display: inline-block; vertical-align: middle; flex: none; }
 
-.screen { position: absolute; inset: 0; pointer-events: auto; display: flex; overflow: auto; touch-action: pan-x pan-y; }
+.screen { position: absolute; inset: 0; bottom: var(--ad-bottom, 0px); right: var(--ad-right, 0px); pointer-events: auto; display: flex; overflow: auto; touch-action: pan-x pan-y; }
 .screen.center { align-items: flex-start; justify-content: flex-start; padding: var(--s4); }
 .screen.center > .panel { margin: auto; max-width: 100%; }
 /* the game keeps running behind every screen: a coloured veil keeps the UI readable */
@@ -169,7 +169,7 @@ input.range:active::-webkit-slider-thumb { transform: scale(0.95); }
 .crest { vertical-align: middle; flex: none; filter: drop-shadow(0 2px 0 rgba(0, 0, 0, 0.35)); }
 
 /* ------------------------------------------------------------- toast */
-.toast { position: absolute; left: 50%; bottom: calc(28px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); pointer-events: auto; max-width: min(560px, 92vw); padding: var(--s3) var(--s5); background: var(--panel2); color: #fff; border: var(--bw) solid var(--line); border-left: 8px solid var(--accent); border-radius: var(--r); box-shadow: var(--sh-panel); font: 800 15px/1.35 var(--f-body); z-index: 50; animation: toastIn var(--t-slow) var(--pop); }
+.toast { position: absolute; left: 50%; bottom: calc(28px + var(--ad-bottom, 0px) + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); pointer-events: auto; max-width: min(560px, 92vw); padding: var(--s3) var(--s5); background: var(--panel2); color: #fff; border: var(--bw) solid var(--line); border-left: 8px solid var(--accent); border-radius: var(--r); box-shadow: var(--sh-panel); font: 800 15px/1.35 var(--f-body); z-index: 50; animation: toastIn var(--t-slow) var(--pop); }
 .toast.bad { border-left-color: var(--danger); }
 .toast.good { border-left-color: var(--success); }
 @keyframes toastIn { from { opacity: 0; transform: translate(-50%, 16px) scale(0.92); } }
@@ -514,3 +514,29 @@ html[data-touch="1"] .coach { top: calc(6px + env(safe-area-inset-top, 0px)); wi
   .screen > *, .btn.primary::after, .logo-ball, .go-big, .badge.pulse, .dot-new, .hud-poss::before, .hud-poss-label, .hud-poss.on .hud-poss-label, .coach-say.pop, .coach-dots i.now, .rp-tag i { animation: none !important; }
   .hud-poss::before { opacity: 0.8; }
 }
+
+/* ---------------------------------------------------------- ads (CrazyGames) */
+/* banners sit outside the screens, which make room for them (--ad-bottom / --ad-right) */
+.ad-back { position: fixed; z-index: 19; background: rgba(7, 11, 29, 0.92); pointer-events: none; }
+.ad-back[hidden] { display: none; }
+.ad-back-bottom { left: 0; right: 0; bottom: 0; height: var(--ad-bottom, 0px); border-top: 2px solid rgba(255, 255, 255, 0.08); }
+.ad-back-right { top: 0; right: 0; bottom: var(--ad-bottom, 0px); width: var(--ad-right, 0px); border-left: 2px solid rgba(255, 255, 255, 0.08); }
+.ad-slot { position: fixed; z-index: 20; display: flex; flex-direction: column; align-items: center; pointer-events: auto; }
+.ad-slot[hidden] { display: none; }
+.ad-bottom { bottom: calc(4px + env(safe-area-inset-bottom, 0px)); }
+.ad-right { right: 12px; }
+.ad-label { height: 14px; font: 700 9px/14px system-ui, sans-serif; letter-spacing: 1.2px; text-transform: uppercase; color: rgba(195, 203, 239, 0.6); visibility: hidden; }
+.ad-slot.filled .ad-label { visibility: visible; }
+.ad-box { background: rgba(7, 11, 29, 0.5); outline: 2px solid rgba(7, 11, 29, 0.85); overflow: hidden; }
+/* rewarded ads: always opt-in, always labelled */
+.btn.rw { --b: var(--success); --b-hi: #52e386; --b-ink: #052812; white-space: normal; }
+.btn.rw .ad-chip { display: inline-flex; align-items: center; gap: 3px; font: 900 11px/1 var(--f-display); padding: 4px 6px; border-radius: 6px; background: #062812; color: #3fe07c; letter-spacing: 0.5px; }
+.btn.rw.busy { filter: saturate(0.4); pointer-events: none; }
+.rw-row { display: flex; justify-content: center; margin-top: var(--s3); }
+.rw-done { display: inline-flex; align-items: center; gap: 6px; font: 900 14px var(--f-display); text-transform: uppercase; color: var(--success); }
+.boost-on { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: var(--r-pill); background: rgba(51, 211, 108, 0.16); border: 2px solid var(--success); color: #9ff0bc; font: 900 13px var(--f-display); text-transform: uppercase; letter-spacing: 0.5px; }
+/* the first-run tutorial: one click captures the mouse (the game is already running) */
+.tut-click { position: absolute; left: 50%; top: 58%; transform: translate(-50%, -50%); pointer-events: none; text-align: center; color: #fff; font: 900 30px/1.1 var(--f-display); text-transform: uppercase; letter-spacing: 1px; text-shadow: 0 4px 0 var(--line), 0 0 24px rgba(0, 0, 0, 0.5); animation: tutClick 1.1s ease-in-out infinite alternate; z-index: 6; }
+.tut-click small { display: block; margin-top: 8px; font: 800 15px var(--f-body); text-transform: none; letter-spacing: 0; color: var(--text2); }
+.tut-click[hidden] { display: none; }
+@keyframes tutClick { from { opacity: 0.75; transform: translate(-50%, -50%) scale(0.97); } to { opacity: 1; transform: translate(-50%, -50%) scale(1.03); } }

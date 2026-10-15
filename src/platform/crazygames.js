@@ -8,13 +8,28 @@
 //   earlier in this browser's localStorage are copied over once.
 // - loadingStart / loadingStop around start-up; gameplayStart / gameplayStop while a
 //   match, drill or the tutorial is actually being played; happytime on a win.
-// - midgame ads only at natural breaks (leaving a match's result screen), with the game
-//   muted while they play; the platform's mute setting silences the game.
+// - midgame ads at every natural break (half time, leaving a result screen, leaving a
+//   match from the pause menu, kick-off from the menus). The SDK decides whether one is
+//   shown (at most one every 3 minutes, none right at the start); the game never shows
+//   two ads back to back.
+// - rewarded ads only when the player asks for one, and the reward only when it finished.
+// - banners (src/platform/banners.js) on menu and result screens, never during play.
+// - the game is muted and paused while a video ad plays; the platform's mute setting
+//   silences the game.
 // - no fullscreen requests of our own (the platform has its own fullscreen button).
 import { useStorage, SAVE_KEYS } from '../core/storage.js';
 
 const INIT_TIMEOUT = 10000;
 const MOVED_FLAG = 'firsttouch.copiedToDataModule';
+// no answer to an ad request at all (blocked script, a lost callback): go on without it
+const MIDGAME_WAIT = 6000;
+const REWARDED_WAIT = 15000;
+// never a midgame ad right after another video ad (no chained ads)
+const AD_GAP = 60000;
+// error codes that mean ads won't work in this session (Basic Launch, ad blockers)
+const ADS_OFF = /disabled|basic|adblock/i;
+
+const errCode = (e) => String((e && (e.code || e.message)) || e || 'error');
 
 export const platform = {
   sdk: null, // the SDK, once initialised in a usable environment
@@ -22,10 +37,16 @@ export const platform = {
   saves: 'localStorage',
   playing: false,
   adPlaying: false,
+  adPending: false,
+  lastVideoAt: -1e9,
+  rewardedOff: false,
   muted: false,
   muteListeners: [],
+  adListeners: [],
 
   get active() { return !!this.sdk; },
+  // rewarded ad buttons are only offered when an ad can actually be watched
+  get rewardedReady() { return !!this.sdk && !this.rewardedOff; },
 
   async init() {
     const CG = window.CrazyGames && window.CrazyGames.SDK;
@@ -48,6 +69,11 @@ export const platform = {
       this.muted = !!(CG.game.settings && CG.game.settings.muteAudio);
       CG.game.addSettingsChangeListener((s) => { this.muted = !!(s && s.muteAudio); this.notifyMute(); });
     } catch (e) { /* settings not available: never muted by the platform */ }
+    // with an ad blocker no rewarded ad can play: don't offer any
+    try {
+      const r = CG.ad.hasAdblock && CG.ad.hasAdblock();
+      if (r && r.then) r.then((b) => { if (b) this.rewardedOff = true; }).catch(() => {});
+    } catch (e) { /* no adblock check in this SDK version */ }
     return this;
   },
 
@@ -77,13 +103,13 @@ export const platform = {
     this.saves = 'crazygames';
   },
 
-  call(fn) { if (this.sdk) { try { fn(this.sdk); } catch (e) { console.warn('[First Touch] CrazyGames SDK call failed:', e && e.message); } } },
+  call(fn) { if (this.sdk) { try { return fn(this.sdk); } catch (e) { console.warn('[First Touch] CrazyGames SDK call failed:', e && e.message); } } return undefined; },
 
   loadingStart() { this.call((s) => s.game.loadingStart()); },
   loadingStop() { this.call((s) => s.game.loadingStop()); },
   // called every frame with whether the player is playing; the SDK hears the changes
   setGameplay(on) {
-    on = !!on && !this.adPlaying;
+    on = !!on && !this.adPlaying && !this.adPending;
     if (on === this.playing) return;
     this.playing = on;
     this.call((s) => (on ? s.game.gameplayStart() : s.game.gameplayStop()));
@@ -93,26 +119,64 @@ export const platform = {
   // fn(muted): told now and whenever the platform mute or an ad changes it
   onMute(fn) { this.muteListeners.push(fn); fn(this.muted || this.adPlaying); },
   notifyMute() { for (const f of this.muteListeners) f(this.muted || this.adPlaying); },
-
-  // a midgame ad at a natural break; done() is called exactly once, after the ad or at once
-  // when there is no ad (no SDK, ad error, too soon after the last one)
-  midgameAd(done) {
-    if (!this.sdk) { done(); return; }
-    let finished = false;
-    const finish = () => {
-      if (finished) return;
-      finished = true;
-      this.adPlaying = false;
-      this.notifyMute();
-      done();
-    };
-    try {
-      this.setGameplay(false);
-      this.sdk.ad.requestAd('midgame', {
-        adStarted: () => { this.adPlaying = true; this.notifyMute(); },
-        adFinished: finish,
-        adError: finish,
-      });
-    } catch (e) { finish(); }
+  // fn(playing): a video ad started or ended (the game pauses and mutes for it)
+  onAd(fn) { this.adListeners.push(fn); },
+  setAdPlaying(on) {
+    if (this.adPlaying === on) return;
+    this.adPlaying = on;
+    if (on) this.setGameplay(false);
+    else this.lastVideoAt = performance.now();
+    this.notifyMute();
+    for (const f of this.adListeners) f(on);
   },
+
+  // one video ad request; done(result, error) exactly once: 'finished', 'error' or 'none'.
+  // onLateFinish: the ad started after we stopped waiting and has now finished.
+  videoAd(type, wait, done, onLateFinish) {
+    let settled = false;
+    const end = (res, err) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      this.adPending = false;
+      this.setAdPlaying(false);
+      done(res, err);
+    };
+    const timer = setTimeout(() => { if (!this.adPlaying) end('none'); }, wait);
+    this.adPending = true;
+    this.setGameplay(false);
+    try {
+      this.sdk.ad.requestAd(type, {
+        adStarted: () => { clearTimeout(timer); this.setAdPlaying(true); },
+        adFinished: () => { if (settled) { this.setAdPlaying(false); if (onLateFinish) onLateFinish(); } else end('finished'); },
+        adError: (e) => { if (settled) this.setAdPlaying(false); else end('error', e); },
+      });
+    } catch (e) { end('error', e); }
+  },
+
+  // a midgame ad at a natural break; done(shown) is called exactly once, after the ad or
+  // at once when there is none (no SDK, too soon after the last ad, an error)
+  midgameAd(done) {
+    if (!this.sdk || this.adPlaying || this.adPending || performance.now() - this.lastVideoAt < AD_GAP) { done(false); return; }
+    this.videoAd('midgame', MIDGAME_WAIT, (res) => done(res === 'finished'));
+  },
+
+  // a rewarded ad the player asked for: onReward() when it was watched to the end,
+  // onEnd(result, code) when the request is over ('finished', 'error' or 'none')
+  rewardedAd({ onReward, onEnd }) {
+    if (!this.rewardedReady || this.adPlaying || this.adPending) { if (onEnd) onEnd('none'); return; }
+    this.videoAd('rewarded', REWARDED_WAIT, (res, err) => {
+      const code = res === 'error' ? errCode(err) : '';
+      if (code && ADS_OFF.test(code)) this.rewardedOff = true;
+      if (res === 'finished' && onReward) onReward();
+      if (onEnd) onEnd(res, code);
+    }, onReward);
+  },
+
+  // banners: the SDK fills the element with this id at the given size
+  requestBanner(id, width, height) {
+    if (!this.sdk || !this.sdk.banner) return Promise.reject(new Error('bannersUnavailable'));
+    try { return Promise.resolve(this.sdk.banner.requestBanner({ id, width, height })); } catch (e) { return Promise.reject(e); }
+  },
+  clearBanner(id) { this.call((s) => s.banner && s.banner.clearBanner(id)); },
 };

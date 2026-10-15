@@ -1,7 +1,8 @@
-// First-run tutorial: shows on a first visit, a scripted player completes every
-// step well inside two minutes, the result screen appears, and it never shows
-// again. Skipping works from the start card, the pause menu and (touch) the
-// coach card's button. Screenshots: tests/out/tut_*.png.
+// First-run tutorial: a first visit drops straight into it (no welcome card; its clock
+// starts with the player's first input), a scripted player completes every step well
+// inside two minutes, the result screen appears, and it never shows again. Skipping
+// works from the coach card's button, with Enter and from the pause menu (P; Esc does
+// nothing), and the main menu replays it. Screenshots: tests/out/tut_*.png.
 import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
 let chromium;
@@ -24,11 +25,18 @@ const flag = (page) => page.evaluate(() => localStorage.getItem('firsttouch.tuto
   page.on('pageerror', (e) => errors.push(e.message));
   await page.goto(URL);
   await page.waitForTimeout(3000);
-  check('first visit opens the tutorial start card', /Welcome to First Touch/.test(await text(page)) && /Skip tutorial/.test(await text(page)));
+  const first = await page.evaluate(() => {
+    const a = window.__ft, s = a.session;
+    return { mode: s && s.cfg.mode, paused: a.paused, screen: !!document.querySelector('.screens .screen'), coach: !document.querySelector('.coach').classList.contains('hidden'), skip: document.querySelector('.coach-skip').textContent, click: !document.querySelector('.tut-click').hidden, say: document.querySelector('.coach-say').textContent };
+  });
+  check('first visit drops straight into the tutorial (no welcome card)', first.mode === 'tutorial' && !first.paused && !first.screen && first.coach && first.click, JSON.stringify(first));
+  check('the coach card has a Skip button', /Skip tutorial/.test(first.skip), first.skip);
   await page.screenshot({ path: `${OUT}/tut_intro_${style}.png` });
-  await page.click('[data-act="start"]');
+  const waits = await page.evaluate(() => ({ hold: window.__ft.session.tutorial.hold, t: window.__ft.session.tutorial.t }));
+  await page.keyboard.press('KeyW');
   await page.waitForTimeout(800);
-  check('Start begins play', await page.evaluate(() => !window.__ft.paused));
+  const after = await page.evaluate(() => ({ hold: window.__ft.session.tutorial.hold, t: window.__ft.session.tutorial.t }));
+  check('its clock waits for the first input, then runs', waits.hold && waits.t === 0 && !after.hold && after.t > 0, JSON.stringify({ waits, after }));
   // look away from the star: the objective arrow points the way
   await page.evaluate(() => {
     const s = window.__ft.session, tut = s.tutorial, h = s.human, m = s.match;
@@ -108,7 +116,7 @@ const flag = (page) => page.evaluate(() => localStorage.getItem('firsttouch.tuto
   await page.click('[data-act="menu"]');
   await page.goto(URL);
   await page.waitForTimeout(2500);
-  check('not shown again after finishing', !(/Welcome to First Touch/.test(await text(page))) && !!(await page.evaluate(() => document.querySelector('.menu'))));
+  check('not shown again after finishing', !!(await page.evaluate(() => document.querySelector('.menu') && !window.__ft.session)));
   await ctx.close();
 }
 
@@ -120,8 +128,8 @@ const flag = (page) => page.evaluate(() => localStorage.getItem('firsttouch.tuto
   page.on('pageerror', (e) => errors.push(e.message));
   await page.goto(URL);
   await page.waitForTimeout(2500);
-  await page.click('[data-act="start"]');
-  await page.waitForTimeout(600);
+  await page.keyboard.press('KeyW');
+  await page.waitForTimeout(300);
   const idle = await page.evaluate(() => {
     const s = window.__ft.session, m = s.match, tut = s.tutorial, inp = s.ctl.input;
     s.paused = true;
@@ -136,19 +144,25 @@ const flag = (page) => page.evaluate(() => localStorage.getItem('firsttouch.tuto
   await ctx.close();
 }
 
-// ---------------------------------------------------------- skip from the start card
+// ---------------------------------------------------------- skip from the coach card, with Enter; replay from the menu
 {
   const ctx = await browser.newContext({ viewport: { width: 960, height: 540 } });
   const page = await ctx.newPage();
   page.on('pageerror', (e) => errors.push(e.message));
   await page.goto(URL);
   await page.waitForTimeout(2500);
-  await page.click('[data-act="skip"]');
+  await page.click('.coach-skip');
   await page.waitForTimeout(500);
-  check('Skip on the start card goes to the main menu', !!(await page.evaluate(() => document.querySelector('.menu'))) && (await flag(page)) === 'skipped');
+  check('Skip on the coach card goes to the main menu', !!(await page.evaluate(() => document.querySelector('.menu') && !window.__ft.session)) && (await flag(page)) === 'skipped');
   await page.goto(URL);
   await page.waitForTimeout(2500);
-  check('not shown again after skipping', !(/Welcome to First Touch/.test(await text(page))));
+  check('not shown again after skipping', !!(await page.evaluate(() => document.querySelector('.menu') && !window.__ft.session)));
+  await page.click('[data-act="tut"]');
+  await page.waitForTimeout(1500);
+  check('Tutorial in the main menu replays it', await page.evaluate(() => !!(window.__ft.session && window.__ft.session.tutorial) && !window.__ft.paused));
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(500);
+  check('Enter skips it', !!(await page.evaluate(() => document.querySelector('.menu') && !window.__ft.session)));
   await ctx.close();
 }
 
@@ -159,9 +173,12 @@ const flag = (page) => page.evaluate(() => localStorage.getItem('firsttouch.tuto
   page.on('pageerror', (e) => errors.push(e.message));
   await page.goto(URL);
   await page.waitForTimeout(2500);
-  await page.click('[data-act="start"]');
-  await page.waitForTimeout(1200);
+  await page.keyboard.press('KeyW');
+  await page.waitForTimeout(600);
   await page.keyboard.press('Escape');
+  await page.waitForTimeout(400);
+  check('Esc does not pause (the browser keeps it for fullscreen)', await page.evaluate(() => !window.__ft.paused && !document.querySelector('[data-act="exit"]')));
+  await page.keyboard.press('KeyP');
   await page.waitForTimeout(600);
   const label = await page.evaluate(() => { const b = document.querySelector('[data-act="exit"]'); return b ? b.textContent : null; });
   check('pause menu offers Skip tutorial', label === 'Skip tutorial', String(label));
@@ -180,8 +197,13 @@ for (const [w, h, tag] of [[844, 390, 'land'], [390, 844, 'port']]) {
   const cdp = await ctx.newCDPSession(page);
   await page.goto(URL);
   await page.waitForTimeout(2500);
-  await page.tap('[data-act="start"]');
-  await page.waitForTimeout(1200);
+  check(`phone ${tag}: straight into play with the touch controls`, await page.evaluate(() => !window.__ft.paused && window.__ft.touch.visible && document.querySelector('.tut-click').hidden));
+  // the first touch (a look drag on the right) starts the tutorial's clock
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: w * 0.75, y: h * 0.6, id: 2 }] });
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: w * 0.75 + 30, y: h * 0.6, id: 2 }] });
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  await page.waitForTimeout(300);
+  check(`phone ${tag}: the first touch starts the clock`, await page.evaluate(() => !window.__ft.session.tutorial.hold));
   // advance to the pass step so the card shows a mid-tutorial state with a touch hint
   await page.evaluate(() => { const s = window.__ft.session, tut = s.tutorial, m = s.match; s.paused = true; for (let i = 0; i < 5 && !tut.done; i++) { tut.complete(true); for (let k = 0; k < 130; k++) { m.step(1 / 120); tut.step(); } } s.paused = false; });
   await page.waitForTimeout(1500);

@@ -16,7 +16,7 @@ The covers are rendered from the game itself and carry only the game's title (no
 
 1. Developer portal → **Submit game** → **HTML5**. Upload `first-touch-crazygames.zip` (or the files in `upload/`). The entry file is `index.html`.
 2. **Progress Save: turn it ON.** The game saves the career, settings, visual style and tutorial state through the SDK's data module. If the toggle is off the data module is disabled; the game then falls back to the browser's localStorage, so nothing breaks, but saves won't follow logged-in players across devices.
-3. SDK: HTML5 SDK **v3** (already loaded by `index.html`).
+3. SDK: HTML5 SDK **v3** (already loaded by `index.html`). Ads used: **midgame**, **rewarded** and **in-game banners** (see "Ads" below).
 4. Fill in the fields below, add the three covers, then check the game in the portal's preview/QA tool before submitting (see "Checking it" below).
 
 ## Portal fields
@@ -48,7 +48,8 @@ Start at a community club and work your way up five tiers, from League Two to th
 - Space: through pass with the ball, call for the ball without it
 - E: tackle
 - C: slide tackle
-- Esc: pause
+- P: pause
+- Enter: skip the tutorial
 
 **Controls (mobile):**
 - Left thumb: move (floating stick, push to the edge to sprint)
@@ -61,17 +62,32 @@ Start at a community club and work your way up five tiers, from League Two to th
 
 **Platforms and orientation:** desktop and mobile (phones and tablets). Best played in landscape; in portrait the game still works and shows a hint to turn the phone.
 
-**Other answers:** single player, no multiplayer, no in-game purchases, no external links, no chat, no user-generated content. English only. Works without an account.
+**Other answers:** single player, no multiplayer, no in-game purchases, no external links, no chat, no user-generated content. English only. Works without an account. Ads: midgame, rewarded and banners through the SDK only.
+
+## First-time players
+
+A new player goes straight into gameplay: Coach Ada's tutorial starts at once, with no welcome screen. Its coach card has a **Skip tutorial** button (Enter on a keyboard; also in the pause menu), its clock only starts with the player's first input, and it can be replayed any time from **Tutorial** in the main menu or in Training. Esc is never used by the game (browsers use it to free the mouse and leave fullscreen); **P** pauses.
 
 ## What the game does with the SDK
 
-All in `src/platform/crazygames.js`:
+In `src/platform/crazygames.js` and `src/platform/banners.js`:
 
 - `CrazyGames.SDK.init()` before the game starts, then `game.loadingStart()` / `game.loadingStop()` around loading.
 - **Saving:** every save goes through `SDK.data` (`getItem` / `setItem` / `removeItem`). Keys: `firsttouch.career`, `firsttouch.career.backup`, `firsttouch.settings.v1`, `firsttouch.style`, `firsttouch.tutorial`. A career of 20 matches takes about 25 KB (the save plus its backup); the match log is capped at 400 matches, so even a very long career stays around 300 KB, well under the 1 MB limit. Saves made earlier in the same browser's localStorage (for example on another site) are copied into the data module once.
 - `game.gameplayStart()` / `game.gameplayStop()` follow real play: on while a match, drill or the tutorial is being played; off on the pause menu, the result screen, menus and during ads. A pause because the tab or the page lost focus does not send `gameplayStop`.
 - `game.happytime()` when you win a match and when you finish the tutorial.
-- **Ads:** one `ad.requestAd('midgame')` when the player leaves a match's result screen (Continue, Play again, Change teams, Main menu). Never during play. Audio is muted while the ad plays and the game continues once it ends or fails. No rewarded ads, no banners.
+- **Midgame ads** (`ad.requestAd('midgame')`) at every natural break, never during play: half time of every match, leaving a result screen (match, drill, tutorial), kick-off from the menus (Play Match, Kick Off, starting a drill), and leaving a match from the pause menu. The SDK decides whether one is shown (at most one every 3 minutes); the game also never requests one within 60 seconds of another video ad, so ads are never chained. At half time the match waits for the SDK's answer; while an ad plays the game is paused and muted (`gameplayStop`), and afterwards one click captures the mouse again.
+- **Rewarded ads** (`ad.requestAd('rewarded')`), always chosen by the player, labelled with an AD chip, and the reward is given only when the ad finished (`adFinished`; never on `adError`):
+  - **Double XP** on a career match report (the match's development XP again), and on a drill result.
+  - **Match boost** in the career hub: +6 to all the player's attributes for the next career match.
+  - **Extra XP session** in Training once the free XP drill is used, or claim a drill's XP from its result.
+  None of them is needed to progress. They aren't shown when no ad can play (no SDK, an ad blocker, an ad error saying ads are disabled), so there are never rewarded buttons without effect; an unfilled ad shows "No ad is available right now".
+- **Banners** (`banner.requestBanner`) on the menu and result screens only (main menu, career hub, create player, quick match setup, training, settings, how to play, visual style, match/drill/tutorial results), never during play, in the pause menu or in short dialogs:
+  - a bottom banner sized to the window: 728x90, 468x60, 320x100 (tall phones) or 320x50 (phones);
+  - on wide screens (1360x640 and up) a second one, 300x250, on the right. Never more than two.
+  - The screens make room for them (they shrink and scroll), so a banner never covers any button or text at any window size, including phones. A dark strip and an "Advertisement" caption keep them apart from the game's own UI.
+  - Each banner is refreshed as often as the SDK allows: 30 seconds after the previous one was served (plus a 0.6 s margin), up to 120 times per size per session. They are cleared when play starts and come back on the menus as soon as a refresh is allowed.
+  - In Basic Launch or the CrazyGames mobile app (the SDK refuses banners there) the banners switch off for the session and leave no gap.
 - **Audio:** the platform's mute setting (`game.settings.muteAudio` and its change listener) silences the game.
 - **Fullscreen:** on CrazyGames the game doesn't request fullscreen itself (the platform has its own button). The browser context menu is disabled.
 - If the SDK isn't there, fails to load, or is "disabled" (any other domain), the game runs normally without it and saves to localStorage.
@@ -79,7 +95,7 @@ All in `src/platform/crazygames.js`:
 ## Checking it
 
 - **Locally:** `npm run build && npm run crazygames`, `node server.js`, then open `http://localhost:8080/crazygames/upload/index.html`. On localhost the SDK runs in its "local" environment (demo ads, local saves).
-- **Automated:** `node tests/crazygames.mjs` drives the upload build with a stand-in SDK (`tests/fakes/crazygames-sdk.js`): saves through the data module and back after a reload, the localStorage copy, loading and gameplay events, focus-loss pauses, platform mute, happytime on a win, the midgame ad (muted) only when leaving the result screen, a failing ad, and the localStorage fallbacks. The real SDK could not be reached from the build environment, so do a final check in the portal's preview/QA tool: the pause menu during an ad, saving after a match, reloading the page and finding the career again, and a phone in landscape.
+- **Automated:** `node tests/crazygames.mjs` drives the upload build with a stand-in SDK (`tests/fakes/crazygames-sdk.js`): saves through the data module and back after a reload, the localStorage copy, loading and gameplay events, focus-loss pauses, platform mute, happytime on a win; midgame ads at half time (match frozen, paused and muted), on leaving result screens and matches and at kick-off, never two in a row; banners on menus only, sized to the window (desktop, wide desktop, phone landscape and portrait), covering nothing, refreshed no faster than allowed, cleared in matches, off in Basic Launch and the mobile app; rewarded ads (boost, double XP, extra training) rewarding only finished ads, a failing ad, no rewarded buttons with an ad blocker or without the SDK; and the localStorage fallbacks. `node tests/tutorial.mjs` checks the first-run flow (straight into play, Skip, Enter, P, Esc unused, replay). The real SDK could not be reached from the build environment, so do a final check in the portal's preview/QA tool: an ad at half time, a rewarded ad, the banners on the menus, saving after a match and reloading, and a phone in landscape.
 
 ## Rebuilding
 

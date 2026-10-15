@@ -58,7 +58,7 @@ export class CoachCard {
       [...this.dots.children].forEach((d, i) => { d.className = i < s.doneCount ? 'done' : i === s.index ? 'now' : ''; });
     }
     if (s.stars !== L.stars) this.starsEl.textContent = `★ ${s.stars}`;
-    if (s.keyboard !== L.keyboard) this.skip.textContent = s.keyboard ? 'Skip (Esc)' : 'Skip';
+    if (s.keyboard !== L.keyboard) this.skip.textContent = s.keyboard ? 'Skip tutorial (Enter)' : 'Skip';
     this.barFill.style.width = `${Math.round(Math.max(0, Math.min(1, s.frac)) * 100)}%`;
     this.last = { ...s };
   }

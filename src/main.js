@@ -17,6 +17,11 @@ import { prepareMatch } from './career/career.js';
 import { hashString } from './sim/rng.js';
 import { tutorialSeen } from './game/tutorial.js';
 import { platform } from './platform/crazygames.js';
+import { Banners } from './platform/banners.js';
+
+// screens with content where banners may show (never during play, the pause menu or
+// short dialogs)
+const BANNER_SCREENS = new Set(['menu', 'hub', 'hubSub', 'training', 'new', 'quick', 'settings', 'help', 'style', 'report', 'drillResult', 'tutorialResult']);
 
 class App {
   constructor() {
@@ -61,6 +66,12 @@ class App {
     this.adapt = { on: this.params.has('adapt') || (!navigator.webdriver && !this.fpsCap), ema: 1 / 60, scale: 1, floor: 0.5, low: 0, high: 0, check: null };
 
     this.input.onPause = () => this.togglePause();
+    // Enter skips the tutorial (its Skip button can't be clicked while the mouse is captured)
+    this.input.onSkip = () => { if (this.session && this.session.tutorial && !this.paused) this.screens.skipTutorial(); };
+    // a click on the game while playing without the mouse captured captures it
+    this.canvas.addEventListener('click', () => {
+      if (this.session && !this.paused && this.input.active && !this.input.touchMode && !this.input.locked && !this.input.dragMode) this.input.requestLock();
+    });
     // losing the mouse because the window lost focus is not the player taking a break
     this.input.onLockLost = () => { if (this.session && !this.paused) this.pause(document.hasFocus() ? 'user' : 'blur'); };
     this.input.onLockGained = () => { if (this.session && this.awaitingLock) this.unpause(); };
@@ -79,10 +90,13 @@ class App {
     // the hosting platform's mute setting (and its ads) silence the game
     this.platform = platform;
     platform.onMute((m) => this.audio.setPlatformMute(m));
+    platform.onAd((on) => this.onAd(on));
+    this.banners = new Banners();
 
     document.getElementById('boot')?.remove();
     const auto = this.params.get('auto');
     // first visit: Coach Ada's warm-up instead of the menu (automated test browsers opt in with ?tutorial)
+    // it starts straight away: no welcome card, just play (a Skip button is on the coach card)
     const firstRun = !auto && !tutorialSeen() && (!navigator.webdriver || this.params.has('tutorial'));
     if (firstRun) this.screens.startTutorial({ first: true });
     else { this.startMenuBackground(); this.screens.mainMenu(); }
@@ -118,7 +132,7 @@ class App {
     } else this.last = t;
     dt = Math.min(dt, 0.1);
     const s = this.session || this.menuSession;
-    if (s) s.frame(this.paused && this.session ? 0 : dt);
+    if (s) s.frame((this.paused || this.adHold) && this.session ? 0 : dt);
     const playing = !!(this.session && this.session.human && !this.paused && !this.session.ended && !this.session.replay);
     this.touch.setVisible(this.input.touchMode && playing);
     if (this.touch.visible) this.touch.update(this.session);
@@ -126,9 +140,41 @@ class App {
     if (this.onFrame) this.onFrame(dt);
   }
 
-  // the platform hears when real play starts and stops (pauses for lost focus don't count)
+  // the platform hears when real play starts and stops (pauses for lost focus don't
+  // count), and banners show on menu and result screens only
   updatePlatform() {
-    platform.setGameplay(!!this.session && !this.session.ended && (!this.paused || this.pausedByBlur));
+    platform.setGameplay(!!this.session && !this.session.ended && !this.adHold && (!this.paused || this.pausedByBlur));
+    this.banners.update(BANNER_SCREENS.has(this.screens.current) && !(this.session && !this.session.ended));
+  }
+
+  // a video ad started or ended: play stops while it runs (it needs the mouse), and on
+  // a computer one click captures the mouse again afterwards
+  onAd(on) {
+    if (on) {
+      if (this.session && !this.session.ended && !this.paused) {
+        this.pausedForAd = true;
+        this.paused = true;
+        this.session.setPaused(true);
+        this.input.releaseAll();
+        this.touch.setVisible(false);
+        this.input.exitLock();
+        this.screens.clear();
+      }
+      return;
+    }
+    if (!this.pausedForAd) return;
+    this.pausedForAd = false;
+    if (!this.session || this.session.ended) return;
+    if (this.input.touchMode || this.input.locked || this.input.dragMode) this.unpause();
+    else this.screens.clickToPlay();
+  }
+
+  // half time is a natural break: a midgame ad if the platform has one (the match
+  // waits for the answer; without an ad it simply goes on)
+  halftimeBreak(session) {
+    if (!platform.active || this.session !== session) return;
+    this.adHold = true;
+    platform.midgameAd(() => { this.adHold = false; });
   }
 
   // Keeps matches smooth on weaker devices: if frames stay slow the render
@@ -216,13 +262,26 @@ class App {
     this.stopMenuBackground();
     if (this.session) this.session.dispose();
     this.screens.clear();
+    this.adHold = false;
+    this.pausedForAd = false;
     this.session = new MatchSession(this, cfg);
     this.hud.show(true);
     this.session.start();
+    if (cfg.mode === 'career' || cfg.mode === 'quick') {
+      const s = this.session;
+      s.match.events.on('halftime', () => this.halftimeBreak(s));
+    }
+    this.input.active = true;
+    // live: play starts at once (the first click on the game captures the mouse)
+    if (cfg.live) {
+      this.paused = false;
+      this.pausedByBlur = false;
+      this.session.setPaused(false);
+      return this.session;
+    }
     // wait for a click so pointer lock can be requested inside a user gesture
     this.paused = true;
     this.session.setPaused(true);
-    this.input.active = true;
     this.screens.clickToPlay();
     return this.session;
   }
@@ -231,6 +290,8 @@ class App {
     if (this.session) this.session.dispose();
     this.session = null;
     this.paused = false;
+    this.adHold = false;
+    this.pausedForAd = false;
     this.input.active = false;
     this.input.exitLock();
     this.hud.show(false);
@@ -266,25 +327,30 @@ class App {
     const home = clubById(fx.home), away = clubById(fx.away);
     const side = fx.home === c.clubId ? 0 : 1;
     const human = { ...c.player };
+    // a match boost earned with a rewarded ad lifts every attribute for this match only
+    const boost = c.boost || 0;
+    if (boost) human.attrs = Object.fromEntries(Object.entries(c.player.attrs).map(([k, v]) => [k, Math.min(99, v + boost)]));
     const cfg = this.matchConfig({ homeClub: home, awayClub: away, human, humanSide: side, seed: hashString(`${c.seed}:${c.seasonNo}:${fx.round}:${prep.id}`), halfLength: this.testHalf });
     const venue = fx.final ? 'continental' : tierInfo(home.tier).venue;
     const matchId = prep.id;
     return this.startSession({
       mode: 'career', venue, venueOpts: { homeName: home.name, final: !!fx.final },
-      final: fx.final ? fx.name : null,
-      title: fx.final ? `${fx.name}: ${home.name} v ${away.name}` : `${tierInfo(home.tier).league} · Round ${fx.round}: ${home.name} v ${away.name}`,
+      final: fx.final ? fx.name : null, boost,
+      title: (fx.final ? `${fx.name}: ${home.name} v ${away.name}` : `${tierInfo(home.tier).league} · Round ${fx.round}: ${home.name} v ${away.name}`) + (boost ? ` · Boost +${boost}` : ''),
       colours: { kits: cfg.kits, human: human.look }, match: cfg.match,
       onEnd: (s) => this.screens.report(s, { career: true, matchId, fx, title: fx.final ? 'Continental Cup Final' : `Round ${fx.round} report` }),
     });
   }
 
   // -------------------------------------------------------------- pause
+  // P (the game never uses Esc: browsers use it to free the mouse and leave fullscreen)
   togglePause() {
-    if (!this.session) { this.screens.back(); return; }
+    if (!this.session || this.session.ended || this.pausedForAd || platform.adPlaying) return;
     if (this.paused) this.resume(); else this.pause();
   }
   pause(reason = 'user') {
     if (!this.session || this.session.ended) return;
+    this.pausedForAd = false;
     this.paused = true;
     this.pausedByBlur = reason === 'blur';
     this.session.setPaused(true);
@@ -321,6 +387,8 @@ class App {
   }
   onBlur() {
     this.audio.setMuted(true);
+    // a video ad takes the focus: that is not the player leaving
+    if (platform.adPlaying || platform.adPending) return;
     if (this.session && !this.paused && !this.session.ended) this.pause('blur');
   }
   onFocus() { this.audio.setMuted(false); if (this.paused) this.audio.suspend(); }

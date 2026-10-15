@@ -23,6 +23,8 @@ import { platform } from '../platform/crazygames.js';
 
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const f1 = (x) => (Math.round(x * 10) / 10).toFixed(1);
+// rewarded "match boost": added to every attribute for the player's next career match
+export const MATCH_BOOST = 6;
 
 const BALL_SVG = `<svg class="logo-ball" viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="46" fill="#fff" stroke="#070b1d" stroke-width="6"/>
   <path d="M50 30 69 44 62 66H38L31 44z" fill="#0e1430"/><path d="M50 30V8M69 44l20-8M62 66l13 19M38 66 25 85M31 44l-20-8" stroke="#0e1430" stroke-width="5"/>
@@ -151,7 +153,7 @@ export class Screens {
       train: () => this.training(),
       settings: () => this.settings(),
       help: () => this.howTo(),
-      tut: () => this.startTutorial(),
+      tut: () => this.startTutorial({ lock: true }),
     }, 'screen menu');
     if (app.store.notice) { this.toast(app.store.notice.text, app.store.notice.bad, 7000); app.store.notice = null; }
   }
@@ -268,7 +270,9 @@ export class Screens {
         <div class="comp">${fx.final ? esc(fx.name) : `${esc(s.league)} · Round ${fx.round} of 6`}</div>
         <div class="fixture"><div class="side">${crestSVG(home, 72)}${esc(home.name)}</div><div class="v">VS</div><div class="side">${crestSVG(away, 72)}${esc(away.name)}</div></div>
         <div class="venue">${venue}</div>
+        ${c.boost ? `<div class="rw-row" style="margin:0 0 var(--s3)"><span class="boost-on">${icon('star', 16)} Boost on: +${c.boost} to all stats this match</span></div>` : ''}
         <button class="btn xl primary block" data-act="play">${icon('play', 32)} Play Match</button>
+        ${c.boost ? '' : this.rewardBtn('rwBoost', `Boost: +${MATCH_BOOST} to all stats next match`)}
         <div class="actions mid" style="margin-top:var(--s4)"><button class="btn sm" data-act="train">${icon('cone', 18)} Training${c.trainingAvailable ? ' <span class="badge gold">+XP</span>' : ''}</button></div></div>`;
     } else if (canStartNewSeason(c)) {
       const won = s.placement === 1, cup = s.final && s.final.played && s.final.won;
@@ -319,9 +323,16 @@ export class Screens {
         </div>
       </div>`, {
       menu: () => { this.hubTab = null; this.mainMenu(); },
-      play: () => this.app.playCareerMatch(),
+      play: () => this.adBreak(() => this.app.playCareerMatch()),
       train: () => this.training(true),
       season: () => { startNewSeason(c); this.saveCareer(); this.hub(); },
+      rwBoost: (b) => this.watchAd(b, () => {
+        c.boost = MATCH_BOOST;
+        this.saveCareer();
+        this.sfx('uiReward', 0.45);
+        this.toast(`Boost on! +${MATCH_BOOST} to all your stats in the next match.`, 'good');
+        this.hub();
+      }),
       up: (b) => { if (upgradeAttr(c, b.dataset.k)) { this.saveCareer(); this.sfx('uiReward', 0.3); this.hub('player'); } },
       accept: (b) => { acceptOffer(c, +b.dataset.i); this.saveCareer(); this.sfx('uiReward', 0.4); this.hub(); },
       decline: () => { declineWindow(c); this.saveCareer(); this.hub(); },
@@ -351,6 +362,7 @@ export class Screens {
       const c = app.store.career;
       summary = commitMatch(c, o.matchId, o.fx, { score: rep.score, rating: rep.rating, minutes: rep.minutes, stats: st, motm: rep.motm && rep.motm.isHuman });
       session.summary = summary;
+      if (session.cfg.boost) delete c.boost;
       this.saveCareer();
     } else if (o.career) summary = session.summary;
     const my = rep.score[h.team], th = rep.score[1 - h.team];
@@ -365,6 +377,7 @@ export class Screens {
     const why = [...bd.pos.slice(0, 3).map((x) => `<div class="plus">+${x.v.toFixed(2)} ${esc(x.label)}</div>`), ...bd.neg.slice(0, 3).map((x) => `<div class="minus">${x.v.toFixed(2)} ${esc(x.label)}</div>`)].join('') || '<div class="muted">A quiet game.</div>';
     const reward = summary && !summary.duplicate
       ? `<div class="reward">${icon('star', 18)} +${summary.xp} XP${summary.levelUps ? ` · ${summary.levelUps} upgrade point${summary.levelUps > 1 ? 's' : ''}!` : ''}</div>`
+        + (session.doubled ? '' : this.rewardBtn('double', `Double your XP (+${summary.xp})`))
       : o.quick ? '<div class="reward plain">Quick match · no career effect</div>' : '';
     const el = this.show(`
       <div class="panel result">
@@ -386,10 +399,22 @@ export class Screens {
               : '<button class="btn primary lg" data-act="menu">Continue</button>'}
         </div>
       </div>`, {
-      cont: () => this.afterMatch(el, () => { app.endSession(); this.hub(); }),
-      again: () => this.afterMatch(el, () => { app.endSession(); app.startQuickMatch(this.lastQuick || {}); }),
-      change: () => this.afterMatch(el, () => { app.endSession(); this.quickMatch(); }),
-      menu: () => this.afterMatch(el, () => { app.endSession(); this.mainMenu(); }),
+      cont: () => this.adBreak(() => { app.endSession(); this.hub(); }),
+      again: () => this.adBreak(() => { app.endSession(); app.startQuickMatch(this.lastQuick || {}); }),
+      change: () => this.adBreak(() => { app.endSession(); this.quickMatch(); }),
+      menu: () => this.adBreak(() => { app.endSession(); this.mainMenu(); }),
+      double: (b) => this.watchAd(b, () => {
+        // double the match's development XP
+        const c = app.store.career;
+        session.doubled = true;
+        const ups = addXp(c, summary.xp);
+        this.saveCareer();
+        const r = el.querySelector('.reward');
+        if (r) r.innerHTML = `${icon('star', 18)} +${summary.xp * 2} XP <span class="badge gold">Doubled</span>${summary.levelUps + ups ? ` · ${summary.levelUps + ups} upgrade point${summary.levelUps + ups > 1 ? 's' : ''}!` : ''}`;
+        b.closest('.rw-row').innerHTML = `<span class="rw-done">${icon('check', 18)} Double XP collected</span>`;
+        this.sfx('uiReward', 0.45);
+        if (ups) this.toast(`+${summary.xp} XP · ${ups} upgrade point${ups > 1 ? 's' : ''} to spend!`, 'good');
+      }),
     });
     this.sfx(outcome === 'win' ? 'uiReward' : 'uiConfirm', 0.4);
     if (outcome === 'win') platform.happytime();
@@ -404,11 +429,37 @@ export class Screens {
     requestAnimationFrame(tick);
   }
 
-  // leaving a match's result screen is the natural break for a CrazyGames midgame ad;
-  // without the SDK (or with no ad to show) it goes straight on
-  afterMatch(el, go) {
-    el.querySelectorAll('button').forEach((b) => { b.disabled = true; });
-    platform.midgameAd(go);
+  // a natural break (leaving a result screen, kick-off from the menus, leaving a match):
+  // a CrazyGames midgame ad if the platform has one; without the SDK, or with no ad to
+  // show, it goes straight on. The screen's buttons wait meanwhile.
+  adBreak(go) {
+    if (!platform.active) { go(); return; }
+    this.root.querySelectorAll('button').forEach((b) => { b.disabled = true; });
+    platform.midgameAd(() => go());
+  }
+
+  // a rewarded ad button: the player chooses to watch, and gets the reward only when the
+  // ad was watched to the end. Not offered at all when no ad can play (no SDK, Basic
+  // Launch, an ad blocker), so it never does nothing.
+  rewardBtn(act, label) {
+    if (!platform.rewardedReady) return '';
+    return `<div class="rw-row"><button class="btn rw" data-act="${act}"><span class="ad-chip">${icon('play', 12)} AD</span><span>${label}</span></button></div>`;
+  }
+  watchAd(btn, onReward) {
+    btn.disabled = true;
+    btn.classList.add('busy');
+    const row = btn.closest('.rw-row');
+    let got = false;
+    platform.rewardedAd({
+      onReward: () => { if (got) return; got = true; onReward(); },
+      onEnd: (res, code) => {
+        if (got) return;
+        btn.disabled = false;
+        btn.classList.remove('busy');
+        if (!platform.rewardedReady && row) row.remove();
+        this.toast(/adblock/i.test(code || '') ? 'No ad could be shown (is an ad blocker on?).' : 'No ad is available right now. Try again in a minute.', true);
+      },
+    });
   }
 
   // ------------------------------------------------------- quick match
@@ -437,7 +488,7 @@ export class Screens {
       go: () => {
         if (st.home === st.away) { this.toast('Pick two different clubs.', true); return; }
         this.lastQuick = { home: st.home, away: st.away, side: st.side, role: st.role, len: st.len, halfLength: HALF_LENGTHS[st.len] };
-        app.startQuickMatch(this.lastQuick);
+        this.adBreak(() => app.startQuickMatch(this.lastQuick));
       },
     });
     const draw = () => {
@@ -481,10 +532,18 @@ export class Screens {
     const short = { passing: 'Pass through the lit gate to your teammate.', finishing: 'Finish the balls served into the box.', dribbling: 'Dribble through every gate, fast.', practice: 'Free play with a teammate, a defender and a keeper.' };
     const cards = Object.entries(DRILLS).map(([k, d]) => card('go', k, k === 'finishing' ? 'ball' : k === 'practice' ? 'eye' : 'cone', d.name, short[k] || d.desc, d.time ? `${d.time} s` : 'No timer')).join('');
     this.show(`<div class="panel wide"><div class="row"><div class="h-title" style="margin:0">Training</div><span class="spacer"></span><span class="badge ${c && c.trainingAvailable ? 'gold' : ''}">${esc(xpNote)}</span></div>
+      ${c && !c.trainingAvailable ? this.rewardBtn('rwTrain', 'Extra XP session: your next drill earns XP') : ''}
       <div class="grid2" style="margin-top:var(--s4)">${card('tut', '', 'whistle', 'Tutorial', 'The basics in under two minutes.', '2 min')}${cards}</div>
       <div class="actions"><button class="btn ghost" data-act="back">${icon('back', 18)} Back</button></div></div>`, {
-      tut: () => this.startTutorial(),
-      go: (b) => this.startDrill(b.dataset.k, fromHub),
+      rwTrain: (b) => this.watchAd(b, () => {
+        c.trainingAvailable = true;
+        this.saveCareer();
+        this.sfx('uiReward', 0.45);
+        this.toast('Extra session unlocked: your next drill earns XP.', 'good');
+        this.training(fromHub);
+      }),
+      tut: () => this.startTutorial({ lock: true }),
+      go: (b) => this.adBreak(() => this.startDrill(b.dataset.k, fromHub)),
       back: () => (fromHub ? this.hub() : this.mainMenu()),
     });
   }
@@ -518,8 +577,11 @@ export class Screens {
   }
 
   // ------------------------------------------------------------ tutorial
-  // Coach Ada's warm-up. Shown automatically on the first visit; finishing or
-  // skipping it (here, in the pause menu or on its start card) retires it for good.
+  // Coach Ada's warm-up. On the first visit the game opens straight into it (no welcome
+  // card): the coach card shows the first task and a Skip button, and the clock only
+  // starts with the player's first input. Finishing or skipping it (on the coach card,
+  // with Enter or from the pause menu) retires it for good; Tutorial in the main menu
+  // and in Training replays it.
   startTutorial(o = {}) {
     const app = this.app;
     const c = app.store.career;
@@ -530,7 +592,7 @@ export class Screens {
     this.tutorialFirst = !!o.first;
     const session = app.startSession({
       mode: 'tutorial', venue: 'training', venueOpts: { homeName: 'Training' },
-      colours: { kits, human: human.look }, match: tut.matchConfig(), noStart: true,
+      colours: { kits, human: human.look }, match: tut.matchConfig(), noStart: true, live: true,
       clockText: () => '', onStep: () => tut.step(),
       onEnd: () => this.tutorialResult(tut),
     });
@@ -539,8 +601,26 @@ export class Screens {
     session.cam.yaw = session.human.yaw;
     app.hud.root.classList.add('tut');
     const card = new CoachCard(app.uiRoot, STEPS.length, () => this.skipTutorial());
+    // on a computer one click on the game captures the mouse; the game is already running
+    const click = document.createElement('div');
+    click.className = 'tut-click';
+    click.innerHTML = 'Click to play<small>then move the mouse to look around</small>';
+    click.hidden = true;
+    app.uiRoot.appendChild(click);
+    // the tutorial's clock waits for the player (a page left open isn't played through)
+    tut.hold = true;
+    const wake = (e) => {
+      if (e && e.target && e.target.closest && e.target.closest('.coach-skip')) return;
+      tut.hold = false;
+      window.removeEventListener('keydown', wake, true);
+      window.removeEventListener('pointerdown', wake, true);
+    };
+    window.addEventListener('keydown', wake, true);
+    window.addEventListener('pointerdown', wake, true);
+    // started from a button click: capture the mouse right away
+    if (o.lock && !app.input.touchMode) { wake(); app.input.requestLock(); }
     const orig = session.dispose.bind(session);
-    session.dispose = () => { tut.dispose(); card.dispose(); app.hud.root.classList.remove('tut'); orig(); };
+    session.dispose = () => { wake(); tut.dispose(); card.dispose(); click.remove(); app.hud.root.classList.remove('tut'); orig(); };
     const objV = new THREE.Vector3();
     const pump = () => {
       if (app.session !== session) return;
@@ -549,6 +629,7 @@ export class Screens {
       const touch = app.input.touchMode;
       const live = st && tut.waitUntil == null && tut.endAt == null;
       card.show(!app.paused && !session.ended);
+      click.hidden = touch || app.paused || session.ended || app.input.locked || app.input.dragMode;
       const goal = !app.paused && !session.ended ? tut.objective(objV) : null;
       card.pointAt(goal ? app.view.projectToScreen(goal, goal) : null);
       card.update({
@@ -579,7 +660,7 @@ export class Screens {
     const app = this.app;
     if (app.session) app.endSession();
     this.mainMenu();
-    this.toast('Tutorial skipped. Replay it any time from the menu.');
+    this.toast('Tutorial skipped. Replay it any time: Tutorial in the main menu.');
   }
 
   tutorialResult(tut) {
@@ -602,8 +683,8 @@ export class Screens {
         <button class="btn primary lg" data-act="career">${c ? 'Continue your career' : 'Start your career'}</button>
         <button class="btn ghost" data-act="menu">Main menu</button>
       </div></div>`, {
-      career: () => { app.endSession(); if (c) this.hub(); else this.newCareer(); },
-      menu: () => { app.endSession(); this.mainMenu(); },
+      career: () => this.adBreak(() => { app.endSession(); if (c) this.hub(); else this.newCareer(); }),
+      menu: () => this.adBreak(() => { app.endSession(); this.mainMenu(); }),
     });
     this.sfx('uiReward', 0.4);
   }
@@ -614,20 +695,35 @@ export class Screens {
     app.input.exitLock();
     const r = drill.result();
     const c = app.store.career;
-    let reward = '';
+    const xpLine = (xp, ups, tag = '') => `${icon('star', 18)} +${xp} XP${tag}${ups ? ` · ${ups} upgrade point${ups > 1 ? 's' : ''}!` : ''}`;
+    let reward = '', offer = '';
     if (drill.kind === 'practice') reward = '<div class="reward plain">Free practice · no XP</div>';
     else if (c && c.trainingAvailable) {
       const ups = addXp(c, r.xp);
       c.trainingAvailable = false;
       this.saveCareer();
-      reward = `<div class="reward">${icon('star', 18)} +${r.xp} XP${ups ? ` · ${ups} upgrade point${ups > 1 ? 's' : ''}!` : ''}</div>`;
-    } else if (c) reward = '<div class="reward plain">No XP until your next match</div>';
+      reward = `<div class="reward">${xpLine(r.xp, ups)}</div>`;
+      offer = r.xp > 0 ? this.rewardBtn('rwXp', `Double your XP (+${r.xp})`) : '';
+    } else if (c) {
+      reward = '<div class="reward plain">No XP until your next match</div>';
+      // the drill's XP even though this session's XP was already used
+      offer = r.xp > 0 ? this.rewardBtn('rwXp', `Claim this drill's XP (+${r.xp})`) : '';
+    }
     this.current = 'drillResult';
-    this.show(`<div class="panel result"><div class="small muted" style="font-weight:800;text-transform:uppercase;letter-spacing:1px">${esc(drill.def.name)}</div>
-      <div class="result-word" style="font-size:clamp(34px,6vw,52px);margin:var(--s3) 0">${esc(r.text)}</div>${reward}
+    const el = this.show(`<div class="panel result"><div class="small muted" style="font-weight:800;text-transform:uppercase;letter-spacing:1px">${esc(drill.def.name)}</div>
+      <div class="result-word" style="font-size:clamp(34px,6vw,52px);margin:var(--s3) 0">${esc(r.text)}</div>${reward}${offer}
       <div class="actions mid"><button class="btn primary lg" data-act="again">${icon('play')} Try again</button><button class="btn ghost" data-act="back">Back to Training</button></div></div>`, {
-      again: () => { app.endSession(); this.startDrill(drill.kind, fromHub); },
-      back: () => { app.endSession(); this.training(fromHub); },
+      again: () => this.adBreak(() => { app.endSession(); this.startDrill(drill.kind, fromHub); }),
+      back: () => this.adBreak(() => { app.endSession(); this.training(fromHub); }),
+      rwXp: (b) => this.watchAd(b, () => {
+        const ups = addXp(c, r.xp);
+        this.saveCareer();
+        const line = el.querySelector('.reward');
+        line.classList.remove('plain');
+        line.innerHTML = xpLine(r.xp, ups, ' <span class="badge gold">Bonus</span>');
+        b.closest('.rw-row').innerHTML = `<span class="rw-done">${icon('check', 18)} +${r.xp} XP collected</span>`;
+        this.sfx('uiReward', 0.45);
+      }),
     });
     this.sfx('uiReward', 0.35);
   }
@@ -763,8 +859,10 @@ export class Screens {
       stats: () => this.liveStats(),
       exit: () => {
         if (mode === 'tutorial') { this.skipTutorial(); return; }
-        app.endSession();
-        if (mode === 'career') this.hub(); else if (mode === 'drill') this.training(!!app.store.career); else this.mainMenu();
+        this.adBreak(() => {
+          app.endSession();
+          if (mode === 'career') this.hub(); else if (mode === 'drill') this.training(!!app.store.career); else this.mainMenu();
+        });
       },
     });
   }
@@ -792,24 +890,12 @@ export class Screens {
     this.seenControls = true;
     const title = sess && sess.cfg.title ? `<div class="small muted" style="font-weight:800;text-transform:uppercase;letter-spacing:1px">${esc(sess.cfg.title)}</div>` : '';
     const touch = this.app.input.touchMode;
-    if (sess && sess.cfg.mode === 'tutorial') {
-      this.show(`<div class="panel narrow center-t">
-        <span class="badge gold">2-minute warm-up</span>
-        <div class="h-title" style="margin-top:var(--s3)">Welcome to First Touch!</div>
-        <p class="lead">Coach Ada shows you the basics. Be quick to earn stars.</p>
-        <div class="actions mid"><button class="btn primary lg" data-act="start">${icon('play')} Start tutorial</button><button class="btn ghost" data-act="skip">Skip tutorial</button></div>
-        <div class="small muted" style="margin-top:var(--s3)">${touch ? 'Best with the phone sideways.' : 'Esc pauses at any time.'}</div></div>`, {
-        start: () => this.app.resume(),
-        skip: () => this.skipTutorial(),
-      });
-      return;
-    }
     const quick = touch
       ? [['Left thumb', 'Move'], ['Right thumb', 'Look'], ['SHOOT', 'Hold & release'], ['PASS', 'To the ring'], ['TACKLE', 'Win it back'], ['II', 'Pause']]
-      : [['WASD', 'Move'], ['Mouse', 'Look'], ['Shift', 'Sprint'], ['Left click', 'Shoot'], ['Right click', 'Pass'], ['E / C', 'Tackle / slide']];
+      : [['WASD', 'Move'], ['Mouse', 'Look'], ['Shift', 'Sprint'], ['Left click', 'Shoot'], ['Right click', 'Pass'], ['Space', 'Call / through'], ['E / C', 'Tackle / slide'], ['P', 'Pause']];
     const keys = `<div class="keys" style="margin-top:var(--s4);text-align:left">${quick.map(([k, d]) => `<div class="key"><span class="kc">${k}</span><span>${d}</span></div>`).join('')}</div>`;
     this.show(`<div class="panel mid go-card">${title}<div class="go-big">${touch ? 'Tap to play' : 'Click to play'}</div>
-      ${first ? keys : `<div class="go-sub">${touch ? 'Left thumb move · right thumb look' : 'WASD move · mouse look · Esc pause'}</div>`}</div>`, {}, 'screen center dim');
+      ${first ? keys : `<div class="go-sub">${touch ? 'Left thumb move · right thumb look' : 'WASD move · mouse look · P pause'}</div>`}</div>`, {}, 'screen center dim');
     this.root.firstChild.addEventListener('click', () => { this.sfx('uiConfirm', 0.3); this.app.resume(); }, { once: true });
   }
 

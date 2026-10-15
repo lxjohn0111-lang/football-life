@@ -1,7 +1,9 @@
 // Keyboard + mouse input with pointer lock (requested inside click handlers)
 // and a click-and-drag / arrow-key look fallback when pointer lock is refused.
 // One control scheme everywhere: WASD move, mouse look, Shift sprint,
-// LMB shoot, RMB pass, Space through pass / request, E tackle, C slide, Esc pause.
+// LMB shoot, RMB pass, Space through pass / request, E tackle, C slide, P pause.
+// Esc is left to the browser (it frees the mouse and leaves fullscreen); the game never
+// binds it, so leaving fullscreen never also pauses or resumes anything.
 // On touch screens the on-screen controls (ui/touch.js) feed the same actions:
 // an analog stick for movement, drags for look, and buttons for the actions.
 
@@ -14,7 +16,7 @@ export const CONTROLS = [
   ['Space', 'Through pass (with the ball) / call for a pass (without it)'],
   ['E', 'Standing tackle (lunges at the ball when it is close)'],
   ['C', 'Slide tackle'],
-  ['Esc', 'Pause'],
+  ['P', 'Pause'],
 ];
 
 export const TOUCH_CONTROLS = [
@@ -127,7 +129,6 @@ export class Input {
 
   keydown(e) {
     const k = e.code;
-    if (k === 'Escape') { if (this.onPause) this.onPause(); return; }
     if (!this.active) return;
     if (['Space', 'ShiftLeft', 'ShiftRight', 'KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(k)) e.preventDefault();
     if (e.repeat) return;
@@ -136,6 +137,7 @@ export class Input {
     else if (k === 'KeyE') this.emit('tackle', true);
     else if (k === 'KeyC') this.emit('slide', true);
     else if (k === 'KeyP') { if (this.onPause) this.onPause(); }
+    else if (k === 'Enter' || k === 'NumpadEnter') { if (this.onSkip) this.onSkip(); }
   }
   keyup(e) {
     this.keys.delete(e.code);

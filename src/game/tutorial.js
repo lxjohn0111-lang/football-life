@@ -67,6 +67,7 @@ export class Tutorial {
     this.say = '';
     this.waitUntil = null;
     this.endAt = null;
+    this.hold = false;
   }
 
   matchConfig() {
@@ -324,6 +325,8 @@ export class Tutorial {
     if (this.done) return;
     const dt = 1 / 120;
     const m = this.m, h = this.h, b = m.ball, now = m.time;
+    // the clock starts with the player's first input
+    if (this.hold) { this.animate(); return; }
     this.t += dt;
     this.animate();
     if (this.t >= TUTORIAL_LIMIT) { this.timeUp = true; this.say = 'Time\'s up. Good effort!'; this.finish(); return; }
