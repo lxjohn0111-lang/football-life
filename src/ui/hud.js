@@ -38,6 +38,10 @@ export class Hud {
     this.notes = el('div', 'hud-notes', this.root);
     this.arrow = el('div', 'hud-arrow hidden', this.root);
     this.banner = el('div', 'hud-banner hidden', this.root);
+    // "SECOND HALF · 3 · 2 · 1 · GO!" when play resumes by itself after a half-time ad
+    this.count = el('div', 'hud-count hidden', this.root);
+    this.countTitle = el('div', 'c-title', this.count);
+    this.countNum = el('div', 'c-num', this.count);
     this.fade = el('div', 'hud-fade', this.root);
     // goal replay: cinema bars, a REPLAY tag, the scoreline and a Skip button
     this.replayEl = el('div', 'hud-replay', this.root);
@@ -73,6 +77,16 @@ export class Hud {
     this.banner.innerHTML = `<div class="b-main">${text}</div>${sub ? `<div class="b-sub">${sub}</div>` : ''}`;
     this.bannerUntil = performance.now() + ms;
   }
+
+  showCountdown(title, num) {
+    if (title != null) this.countTitle.textContent = title;
+    this.count.classList.remove('hidden');
+    this.countNum.textContent = num;
+    this.countNum.classList.toggle('go', num === 'GO!');
+    // restart the pop for every number
+    this.countNum.classList.remove('pop'); void this.countNum.offsetWidth; this.countNum.classList.add('pop');
+  }
+  endCountdown() { this.count.classList.add('hidden'); }
 
   flashFade() { this.fade.classList.remove('on'); void this.fade.offsetWidth; this.fade.classList.add('on'); }
 

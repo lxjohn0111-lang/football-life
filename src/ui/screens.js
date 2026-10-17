@@ -399,10 +399,10 @@ export class Screens {
               : '<button class="btn primary lg" data-act="menu">Continue</button>'}
         </div>
       </div>`, {
-      cont: () => this.adBreak(() => { app.endSession(); this.hub(); }),
+      cont: () => { app.endSession(); this.hub(); },
       again: () => this.adBreak(() => { app.endSession(); app.startQuickMatch(this.lastQuick || {}); }),
-      change: () => this.adBreak(() => { app.endSession(); this.quickMatch(); }),
-      menu: () => this.adBreak(() => { app.endSession(); this.mainMenu(); }),
+      change: () => { app.endSession(); this.quickMatch(); },
+      menu: () => { app.endSession(); this.mainMenu(); },
       double: (b) => this.watchAd(b, () => {
         // double the match's development XP
         const c = app.store.career;
@@ -429,9 +429,10 @@ export class Screens {
     requestAnimationFrame(tick);
   }
 
-  // a natural break (leaving a result screen, kick-off from the menus, leaving a match):
-  // a CrazyGames midgame ad if the platform has one; without the SDK, or with no ad to
-  // show, it goes straight on. The screen's buttons wait meanwhile.
+  // just before play starts (kick-off from the menus, Play again, a drill starting): a
+  // CrazyGames midgame ad if the platform has one; without the SDK, or with no ad to
+  // show, it goes straight on. The screen's buttons wait meanwhile. Purely navigational
+  // buttons (back to a menu, the hub, Exit) never show an ad.
   adBreak(go) {
     if (!platform.active) { go(); return; }
     this.root.querySelectorAll('button').forEach((b) => { b.disabled = true; });
@@ -683,8 +684,8 @@ export class Screens {
         <button class="btn primary lg" data-act="career">${c ? 'Continue your career' : 'Start your career'}</button>
         <button class="btn ghost" data-act="menu">Main menu</button>
       </div></div>`, {
-      career: () => this.adBreak(() => { app.endSession(); if (c) this.hub(); else this.newCareer(); }),
-      menu: () => this.adBreak(() => { app.endSession(); this.mainMenu(); }),
+      career: () => { app.endSession(); if (c) this.hub(); else this.newCareer(); },
+      menu: () => { app.endSession(); this.mainMenu(); },
     });
     this.sfx('uiReward', 0.4);
   }
@@ -714,7 +715,7 @@ export class Screens {
       <div class="result-word" style="font-size:clamp(34px,6vw,52px);margin:var(--s3) 0">${esc(r.text)}</div>${reward}${offer}
       <div class="actions mid"><button class="btn primary lg" data-act="again">${icon('play')} Try again</button><button class="btn ghost" data-act="back">Back to Training</button></div></div>`, {
       again: () => this.adBreak(() => { app.endSession(); this.startDrill(drill.kind, fromHub); }),
-      back: () => this.adBreak(() => { app.endSession(); this.training(fromHub); }),
+      back: () => { app.endSession(); this.training(fromHub); },
       rwXp: (b) => this.watchAd(b, () => {
         const ups = addXp(c, r.xp);
         this.saveCareer();
@@ -743,7 +744,7 @@ export class Screens {
       <div class="previews">${card('classic', 'Classic', 'Ink drawing: pale colours, thin black lines.')}${card('neo', 'Neobrutalist', 'Bold colours, thick outlines, hard shadows.')}</div>
       <div class="actions"><button class="btn primary" data-act="back">Done</button></div></div>`, {
       pick: (b) => { app.setStyle(b.dataset.s); this.styleMenu(fromPause, back); },
-      back: () => (back ? back() : fromPause ? this.pauseMenu() : this.mainMenu()),
+      back: () => { app.commitSettings(); if (back) back(); else if (fromPause) this.pauseMenu(); else this.mainMenu(); },
     });
   }
 
@@ -772,7 +773,8 @@ export class Screens {
         ${row('Effects', this.slider('s-sfx', 0, 1, 0.05, s.sfx, pct(s.sfx)))}
         ${row('Crowd', this.slider('s-crowd', 0, 1, 0.05, s.crowd, pct(s.crowd)))}`)}
       <div class="actions"><button class="btn primary lg" data-act="back">Done</button></div></div>`, {
-      back: () => { app.applySettings(); fromPause ? this.pauseMenu() : this.mainMenu(); },
+      // saved once, here (Done), not on every change
+      back: () => { app.applySettings(); app.commitSettings(); fromPause ? this.pauseMenu() : this.mainMenu(); },
       preview: () => { app.applySettings(); this.styleMenu(fromPause, () => this.settings(fromPause, 'video')); },
     });
     el.querySelectorAll('.tab').forEach((t) => t.addEventListener('click', () => {
@@ -859,10 +861,8 @@ export class Screens {
       stats: () => this.liveStats(),
       exit: () => {
         if (mode === 'tutorial') { this.skipTutorial(); return; }
-        this.adBreak(() => {
-          app.endSession();
-          if (mode === 'career') this.hub(); else if (mode === 'drill') this.training(!!app.store.career); else this.mainMenu();
-        });
+        app.endSession();
+        if (mode === 'career') this.hub(); else if (mode === 'drill') this.training(!!app.store.career); else this.mainMenu();
       },
     });
   }
@@ -882,10 +882,16 @@ export class Screens {
       <div class="actions mid"><button class="btn primary" data-act="back">Back</button></div></div>`, { back: () => this.pauseMenu() });
   }
 
-  // one click starts play (pointer lock needs a user gesture)
-  clickToPlay() {
+  // one click starts play (pointer lock needs a user gesture). resume: the mouse was
+  // freed with Esc during play; just a click to carry on (P still opens the menu)
+  clickToPlay(o = {}) {
     this.current = 'click';
     const sess = this.app.session;
+    if (o.resume) {
+      this.show(`<div class="panel narrow go-card"><div class="go-big">Click to continue</div><div class="go-sub">P opens the menu</div></div>`, {}, 'screen center dim');
+      this.root.firstChild.addEventListener('click', () => { this.sfx('uiConfirm', 0.3); this.app.resume(); }, { once: true });
+      return;
+    }
     const first = !this.seenControls;
     this.seenControls = true;
     const title = sess && sess.cfg.title ? `<div class="small muted" style="font-weight:800;text-transform:uppercase;letter-spacing:1px">${esc(sess.cfg.title)}</div>` : '';

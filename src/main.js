@@ -17,11 +17,6 @@ import { prepareMatch } from './career/career.js';
 import { hashString } from './sim/rng.js';
 import { tutorialSeen } from './game/tutorial.js';
 import { platform } from './platform/crazygames.js';
-import { Banners } from './platform/banners.js';
-
-// screens with content where banners may show (never during play, the pause menu or
-// short dialogs)
-const BANNER_SCREENS = new Set(['menu', 'hub', 'hubSub', 'training', 'new', 'quick', 'settings', 'help', 'style', 'report', 'drillResult', 'tutorialResult']);
 
 class App {
   constructor() {
@@ -73,7 +68,9 @@ class App {
       if (this.session && !this.paused && this.input.active && !this.input.touchMode && !this.input.locked && !this.input.dragMode) this.input.requestLock();
     });
     // losing the mouse because the window lost focus is not the player taking a break
-    this.input.onLockLost = () => { if (this.session && !this.paused) this.pause(document.hasFocus() ? 'user' : 'blur'); };
+    // Esc (the browser's key for freeing the mouse and leaving fullscreen) never opens the
+    // pause menu: the match just waits for a click; losing the window is a real pause
+    this.input.onLockLost = () => { if (this.session && !this.paused) this.pause(document.hasFocus() ? 'lock' : 'blur'); };
     this.input.onLockGained = () => { if (this.session && this.awaitingLock) this.unpause(); };
     this.input.onLockError = () => { if (this.session && this.awaitingLock) { this.awaitingLock = false; this.screens.lockRefused(); } };
     document.addEventListener('visibilitychange', () => { if (document.hidden) this.onBlur(); else this.onFocus(); });
@@ -91,7 +88,6 @@ class App {
     this.platform = platform;
     platform.onMute((m) => this.audio.setPlatformMute(m));
     platform.onAd((on) => this.onAd(on));
-    this.banners = new Banners();
 
     document.getElementById('boot')?.remove();
     const auto = this.params.get('auto');
@@ -132,7 +128,9 @@ class App {
     } else this.last = t;
     dt = Math.min(dt, 0.1);
     const s = this.session || this.menuSession;
-    if (s) s.frame((this.paused || this.adHold) && this.session ? 0 : dt);
+    if (this.countdown && !this.paused) this.tickCountdown(dt);
+    if (s) s.frame((this.paused || this.adHold || this.countdown) && this.session ? 0 : dt);
+    this.updateLockHint();
     const playing = !!(this.session && this.session.human && !this.paused && !this.session.ended && !this.session.replay);
     this.touch.setVisible(this.input.touchMode && playing);
     if (this.touch.visible) this.touch.update(this.session);
@@ -140,11 +138,9 @@ class App {
     if (this.onFrame) this.onFrame(dt);
   }
 
-  // the platform hears when real play starts and stops (pauses for lost focus don't
-  // count), and banners show on menu and result screens only
+  // the platform hears when real play starts and stops (pauses for lost focus don't count)
   updatePlatform() {
     platform.setGameplay(!!this.session && !this.session.ended && !this.adHold && (!this.paused || this.pausedByBlur));
-    this.banners.update(BANNER_SCREENS.has(this.screens.current) && !(this.session && !this.session.ended));
   }
 
   // a video ad started or ended: play stops while it runs (it needs the mouse), and on
@@ -165,8 +161,56 @@ class App {
     if (!this.pausedForAd) return;
     this.pausedForAd = false;
     if (!this.session || this.session.ended) return;
-    if (this.input.touchMode || this.input.locked || this.input.dragMode) this.unpause();
-    else this.screens.clickToPlay();
+    // play goes on by itself after the ad (no click needed): a short countdown into the
+    // second half; on a computer a click on the game captures the mouse again
+    this.unpause();
+    this.startCountdown(this.session.match.phase === 'halftime' ? 'Second half' : 'Back to the game');
+  }
+
+  // "SECOND HALF · 3 · 2 · 1 · GO!" over a frozen match, then play starts
+  startCountdown(title) {
+    const m = this.session.match;
+    // the teams line up for the second-half kick-off now, so the countdown shows them ready
+    if (m.phase === 'halftime') { m.requestSkip(); m.phaseT = Math.max(m.phaseT, 0.6); m.step(1 / 120); }
+    this.countdown = { t: 0, dur: 2.4, last: '3' };
+    this.hud.bannerUntil = 0; // the HALF TIME banner makes way
+    this.hud.root.classList.add('counting');
+    this.hud.showCountdown(title, '3');
+    this.audio.play('uiClick', { gain: 0.35 });
+  }
+  // 3 · 2 · 1 with the match frozen, then GO! as play starts (GO! stays a moment)
+  tickCountdown(dt) {
+    const c = this.countdown;
+    c.t += dt;
+    const left = c.dur - c.t;
+    if (left <= 0) {
+      this.countdown = null;
+      this.hud.showCountdown(null, 'GO!');
+      this.audio.play('whistle', { gain: 0.5 });
+      clearTimeout(this.goTimer);
+      this.goTimer = setTimeout(() => { this.hud.endCountdown(); this.hud.root.classList.remove('counting'); }, 750);
+      return;
+    }
+    const label = left > 1.6 ? '3' : left > 0.8 ? '2' : '1';
+    if (label !== c.last) {
+      c.last = label;
+      this.hud.showCountdown(null, label);
+      this.audio.play('uiClick', { gain: 0.35 });
+    }
+  }
+
+  // playing without the mouse captured (after an ad): a hint that one click captures it
+  updateLockHint() {
+    const show = !!(this.session && !this.paused && !this.countdown && !this.hud.root.classList.contains('counting') && !this.session.ended && this.session.cfg.mode !== 'tutorial' && this.session.human
+      && this.input.active && !this.input.touchMode && !this.input.locked && !this.input.dragMode);
+    if (!this.lockHint) {
+      if (!show) return;
+      this.lockHint = document.createElement('div');
+      this.lockHint.className = 'tut-click';
+      this.lockHint.innerHTML = 'Click to take control<small>the mouse looks and aims</small>';
+      this.uiRoot.appendChild(this.lockHint);
+    }
+    this.lockHint.hidden = !show;
   }
 
   // half time is a natural break: a midgame ad if the platform has one (the match
@@ -264,6 +308,10 @@ class App {
     this.screens.clear();
     this.adHold = false;
     this.pausedForAd = false;
+    this.countdown = null;
+    clearTimeout(this.goTimer);
+    this.hud.endCountdown();
+    this.hud.root.classList.remove('counting');
     this.session = new MatchSession(this, cfg);
     this.hud.show(true);
     this.session.start();
@@ -292,6 +340,10 @@ class App {
     this.paused = false;
     this.adHold = false;
     this.pausedForAd = false;
+    this.countdown = null;
+    clearTimeout(this.goTimer);
+    this.hud.endCountdown();
+    this.hud.root.classList.remove('counting');
     this.input.active = false;
     this.input.exitLock();
     this.hud.show(false);
@@ -346,6 +398,8 @@ class App {
   // P (the game never uses Esc: browsers use it to free the mouse and leave fullscreen)
   togglePause() {
     if (!this.session || this.session.ended || this.pausedForAd || platform.adPlaying) return;
+    // on a "click to play / continue" card P opens the menu
+    if (this.paused && this.screens.current === 'click') { this.screens.pauseMenu(); return; }
     if (this.paused) this.resume(); else this.pause();
   }
   pause(reason = 'user') {
@@ -358,7 +412,8 @@ class App {
     this.touch.setVisible(false);
     this.input.exitLock();
     this.audio.suspend();
-    this.screens.pauseMenu();
+    if (reason === 'lock') this.screens.clickToPlay({ resume: true });
+    else this.screens.pauseMenu();
   }
   // called from a click handler (user gesture) so pointer lock can be requested
   resume() {
@@ -380,6 +435,7 @@ class App {
   unpause() {
     this.awaitingLock = false;
     this.pausedByBlur = false;
+    this.commitSettings();
     this.screens.clear();
     this.paused = false;
     if (this.session) this.session.setPaused(false);
@@ -409,12 +465,21 @@ class App {
       // players are built at the quality's level of detail too
       if (this.view.match) this.view.rebuildCharacters();
     }
-    if (!saveSettings(s)) this.screens.toast('Settings could not be saved (storage unavailable).', true);
+    this.settingsDirty = true;
   }
   setStyle(name) {
     this.style = name;
     this.view.setStyle(name);
-    saveStyle(name);
+    this.styleDirty = true;
+  }
+  // settings and the visual style are applied live but saved once, when the player
+  // leaves the screen (Done), not on every change
+  commitSettings() {
+    if (this.settingsDirty) {
+      this.settingsDirty = false;
+      if (!saveSettings(this.settings)) this.screens.toast('Settings could not be saved (storage unavailable).', true);
+    }
+    if (this.styleDirty) { this.styleDirty = false; saveStyle(this.style); }
   }
 }
 

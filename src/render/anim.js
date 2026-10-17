@@ -180,29 +180,47 @@ export class Animator {
       const kd = tmp[6].set(Math.sin(kyaw), 0, Math.cos(kyaw));
       const kl = tmp[7].set(Math.cos(kyaw), 0, -Math.sin(kyaw)).multiplyScalar(kf === 0 ? 1 : -1); // kicking-foot side
       const B = tmp[8];
-      if (a.contacted && touch && touch.kind !== 'receive') B.set(touch.x, 0, touch.z); else B.set(ball.x, 0, ball.z);
+      // after contact the follow-through stays anchored where this kick met the ball (or,
+      // for a miss, just in front of the player), never chasing a ball that flies away
+      const contactAt = now - (a.t - a.contactT);
+      if (a.contacted && !a.missed && touch && (touch.kind === 'kick' || touch.kind === 'shot') && touch.time >= contactAt - 0.05) B.set(touch.x, 0, touch.z);
+      else if (a.contacted) {
+        if (!a.cB) a.cB = { x: root.x + kd.x * 0.45, z: root.z + kd.z * 0.45 };
+        B.set(a.cB.x, 0, a.cB.z);
+      } else B.set(ball.x, 0, ball.z);
+      // the wind-up only reaches for a ball within reach: a ball still metres away (a
+      // first-time kick waiting for it) leaves the run alone, so nobody floats toward it
+      // (the follow-through keeps the weight the wind-up ended with, so nothing snaps)
+      if (!a.contacted) a.rw = clamp(1 - (Math.hypot(B.x - root.x, B.z - root.z) - 0.75) / 0.5, 0, 1);
+      const reachW = a.rw ?? 1;
+      const fT = a.contacted ? clamp((a.t - a.contactT) / a.follow, 0, 1) : 0;
+      // feet stay within what the legs can reach from the hips (a target further out would
+      // lift the foot off the ground and the player would seem to float)
+      const near = (v, maxD) => { const dx = v.x - root.x, dz = v.z - root.z, d = Math.hypot(dx, dz); if (d > maxD) { v.x = root.x + (dx / d) * maxD; v.z = root.z + (dz / d) * maxD; } return v; };
       const lofted = a.kind === 'cross' || a.kind === 'lob' || a.kind === 'clear';
       const power = a.kind === 'shot' ? (a.charging ? a.charge : Math.max(a.charge || 0, a.ai ? a.power : 0.35)) : lofted ? 0.8 : 0.3 + (a.charge || 0) * 0.4;
-      const support = tmp[9].copy(B).addScaledVector(kd, -0.14).addScaledVector(kl, -0.25);
+      const support = near(tmp[9].copy(B).addScaledVector(kd, -0.14).addScaledVector(kl, -0.25), 0.3);
+      // knees bend into the strike, and straighten again through the follow-through
+      pelvisY -= 0.06 * reachW * (1 - smooth(fT));
       const kfF = this.feet[kf].out, sfF = this.feet[1 - kf].out;
       if (!a.contacted) {
         const w = a.charging ? 0.35 + 0.4 * a.charge : clamp(a.t / Math.max(0.06, a.t + a.eta), 0, 1);
-        const back = tmp[10].copy(B).addScaledVector(kd, -(0.32 + 0.38 * power)).addScaledVector(kl, 0.06);
+        const back = near(tmp[10].copy(B).addScaledVector(kd, -(0.32 + 0.38 * power)).addScaledVector(kl, 0.06), 0.55);
         back.y = 0.12 + 0.32 * power;
-        if (w < 0.75) kfF.lerp(back, smooth(w / 0.75));
-        else kfF.copy(back).lerp(tmp[11].copy(B).setY(0.06), (w - 0.75) / 0.25);
-        sfF.lerp(support, smooth(w * 2.2));
-        lean = 0.12 - (lofted ? 0.08 : 0);
+        if (w < 0.75) kfF.lerp(back, smooth(w / 0.75) * reachW);
+        else kfF.lerp(back.lerp(near(tmp[11].copy(B), 0.7).setY(0.06), (w - 0.75) / 0.25), reachW);
+        sfF.lerp(support, smooth(w * 2.2) * reachW);
+        lean = lerp(lean, 0.12 - (lofted ? 0.08 : 0), reachW);
       } else {
-        const f = (a.t - a.contactT) / a.follow;
-        const thr = tmp[10].copy(B).addScaledVector(kd, 0.45 + 0.5 * power);
+        const f = fT;
+        const thr = near(tmp[10].copy(B).addScaledVector(kd, 0.45 + 0.5 * power), 0.75);
         thr.y = 0.2 + 0.5 * power;
-        const cp = tmp[11].copy(B).setY(0.06);
-        if (f < 0.5) kfF.copy(cp.lerp(thr, smooth(f / 0.5)));
-        else kfF.lerp(thr, 1 - smooth((f - 0.5) / 0.5));
-        if (f < 0.65) sfF.copy(support);
-        else sfF.lerp(support, 1 - smooth((f - 0.65) / 0.35));
-        lean = 0.1 - (lofted ? 0.12 : 0) * (1 - f);
+        const cp = near(tmp[11].copy(B), 0.7).setY(0.06);
+        if (f < 0.5) kfF.lerp(cp.lerp(thr, smooth(f / 0.5)), reachW);
+        else kfF.lerp(thr, (1 - smooth((f - 0.5) / 0.5)) * reachW);
+        if (f < 0.65) sfF.lerp(support, reachW);
+        else sfF.lerp(support, (1 - smooth((f - 0.65) / 0.35)) * reachW);
+        lean = lerp(lean, 0.1 - (lofted ? 0.12 : 0) * (1 - f), reachW);
       }
       // balance arms: kicking-side arm back and out, other arm forward
       const ks = kf === 0 ? 1 : -1;

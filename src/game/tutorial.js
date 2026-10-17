@@ -293,9 +293,13 @@ export class Tutorial {
     const j = this.jojo, br = this.barry;
     // Jojo: jogs to his spot, collects passes near him and plays the ball back
     if (b.owner === j) {
-      j.desired.set(0, 0, 0);
+      // a ball that ran on a little: walk up to it first, then play it back
+      const bd = b.pos.distXZ(j.pos);
+      if (!j.action) {
+        if (bd > 0.7) { const k = Math.min(j.jogSpeed(), bd * 3) / bd; j.desired.set((b.pos.x - j.pos.x) * k, 0, (b.pos.z - j.pos.z) * k); } else j.desired.set(0, 0, 0);
+      }
       j.faceYaw = yawOf(h.pos.x - j.pos.x, h.pos.z - j.pos.z);
-      if (!j.action && now - (j.gotAt || now) > 0.7) startKick(m, j, 'pass', { target: h, ai: true });
+      if (!j.action && bd < 0.9 && now - (j.gotAt || now) > 0.7) startKick(m, j, 'pass', { target: h, ai: true });
     } else {
       j.gotAt = now;
       const spot = this.jojoSpot;

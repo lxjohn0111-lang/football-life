@@ -3,12 +3,12 @@
 // loading and gameplay events follow real play (pauses for lost focus don't count),
 // happytime on a win, the platform mute silences the game, and on other domains
 // ("disabled") or without the data module the game falls back to localStorage.
-// Ads: midgame ads at natural breaks only (half time, leaving a result screen, kick-off
-// from the menus, leaving a match), never two video ads back to back, the game paused and
-// muted while one plays; banners on menu and result screens only, sized to the window,
-// never covering the screens, refreshed no faster than the SDK allows, off in Basic
-// Launch; rewarded ads (match boost, double XP, extra training) that give their reward
-// only when watched, and aren't offered when no ad can play.
+// Ads: midgame ads only just before play starts (kick-off from the menus, Play again, the
+// second half), never on navigational buttons and never two video ads back to back, the
+// game paused and muted while one plays and the second half starting by itself after a
+// half-time ad; no banners at all; rewarded ads (match boost, double XP, extra training)
+// that give their reward only when watched, and aren't offered when no ad can play.
+// Also: settings are saved once (Done), and Esc freeing the mouse never opens the menu.
 // Needs `npm run crazygames` first and `node server.js` running. Usage: node tests/crazygames.mjs
 import { createRequire } from 'node:module';
 import fs from 'node:fs';
@@ -53,9 +53,19 @@ const calls = (page) => page.evaluate(() => window.__cg.calls.slice());
   check('earlier localStorage saves are copied into the data module', st.fov === 111 && (await page.evaluate(() => !!localStorage.getItem('cgcloud:firsttouch.settings.v1'))));
   // a new career and a settings change
   await page.evaluate(() => { const s = window.__ft.screens; s.newCareer(); document.querySelector('#nc-name').value = 'Cloud Kid'; document.querySelector('[data-act="go"]').click(); });
-  await page.evaluate(() => { const a = window.__ft; a.settings.sensitivity = 1.7; a.applySettings(); });
+  await page.evaluate(() => { const a = window.__ft; a.settings.sensitivity = 1.7; a.applySettings(); a.commitSettings(); });
   const stored = await page.evaluate(() => ({ cloud: !!localStorage.getItem('cgcloud:firsttouch.career'), local: !!localStorage.getItem('firsttouch.career'), sens: JSON.parse(localStorage.getItem('cgcloud:firsttouch.settings.v1')).sensitivity }));
   check('career and settings are written through the data module only', stored.cloud && !stored.local && stored.sens === 1.7, JSON.stringify(stored));
+  // the settings screen: changes apply at once, but are saved once, when Done is pressed
+  await page.evaluate(() => window.__ft.screens.settings(false, 'audio'));
+  const saves = async () => (await calls(page)).filter((x) => x === 'data.setItem:firsttouch.settings.v1').length;
+  const s0 = await saves();
+  for (const v of ['0.2', '0.4', '0.6', '0.3', '0.9']) await page.locator('#s-master').fill(v);
+  const s1 = await saves();
+  const live = await page.evaluate(() => window.__ft.settings.master);
+  await page.click('[data-act="back"]');
+  const s2 = await saves();
+  check('settings apply at once but are saved once, on Done', s1 === s0 && live === 0.9 && s2 === s0 + 1, JSON.stringify({ before: s0, whileChanging: s1, afterDone: s2 }));
   await page.reload();
   await page.waitForFunction(() => window.__ft, null, { timeout: 30000 });
   await page.waitForTimeout(500);
@@ -99,14 +109,22 @@ const calls = (page) => page.evaluate(() => window.__cg.calls.slice());
   await tick();
   c = await calls(page);
   check('gameplayStop and happytime at a won full time', c.includes('happytime') && c.lastIndexOf('gameplayStop') > c.lastIndexOf('gameplayStart'), c.slice(-4).join(','));
-  check('no ad before the player leaves the result screen', !c.some((x) => x.startsWith('requestAd')));
-  await page.click('[data-act="menu"]');
+  check('no ad on the result screen', !c.some((x) => x.startsWith('requestAd')));
+  // Play again starts play: the midgame ad comes first, then the new match
+  await page.click('[data-act="again"]');
   await page.waitForTimeout(150);
-  const during = await page.evaluate(() => ({ menu: !!document.querySelector('.menu'), disabled: [...document.querySelectorAll('.result button')].every((b) => b.disabled) }));
-  await page.waitForFunction(() => document.querySelector('.menu'), null, { timeout: 10000 });
+  const during = await page.evaluate(() => ({ disabled: [...document.querySelectorAll('.result button')].every((b) => b.disabled) }));
+  await page.waitForFunction(() => window.__ft.session && window.__ft.screens.current === 'click', null, { timeout: 30000 });
   c = await calls(page);
-  check('leaving the result screen shows a midgame ad, then goes on', c.includes('requestAd:midgame') && !during.menu && during.disabled, JSON.stringify(during));
+  check('Play again is a midgame ad break, then the match starts', c.includes('requestAd:midgame') && during.disabled, JSON.stringify(during));
   check('the game is muted while the ad plays and unmuted after', (await page.evaluate(() => window.__cg.mutedDuringAd)) === true && (await page.evaluate(() => !window.__ft.audio.platformMute)));
+  // Esc frees the mouse during play: a "click to continue" card, never the pause menu
+  await page.evaluate(() => { const a = window.__ft; a.input.dragMode = false; a.unpause(); a.input.onLockLost(); });
+  const esc = await page.evaluate(() => ({ paused: window.__ft.paused, screen: window.__ft.screens.current, menu: !!document.querySelector('[data-act="exit"]'), text: document.querySelector('.screens').textContent }));
+  check('Esc (the mouse freed) never opens the pause menu', esc.paused && esc.screen === 'click' && !esc.menu && /Click to continue/.test(esc.text), JSON.stringify({ ...esc, text: esc.text.slice(0, 40) }));
+  await page.keyboard.press('KeyP');
+  await page.waitForTimeout(200);
+  check('P opens the pause menu', await page.evaluate(() => !!document.querySelector('[data-act="exit"]')));
   await ctx.close();
 }
 
@@ -116,10 +134,10 @@ const calls = (page) => page.evaluate(() => window.__cg.calls.slice());
   await ctx.addInitScript(() => localStorage.setItem('firsttouch.tutorial', 'done'));
   const page = await open(ctx, '&cgad=error&auto=quick&venue=community&half=6');
   await page.evaluate(() => { const a = window.__ft; a.loop = () => {}; a.view.noDraw = true; a.unpause(); const s = a.session, m = s.match; let n = 0; while (m.phase !== 'fulltime' && n++ < 120 * 900) { m.step(1 / 120); if (m.phase === 'goal' || m.phase === 'halftime') m.requestSkip(); } m.phaseT = 5; s.frame(1 / 30); });
-  await page.waitForFunction(() => document.querySelector('[data-act="menu"]'), null, { timeout: 30000 });
-  await page.click('[data-act="menu"]');
-  await page.waitForFunction(() => document.querySelector('.menu'), null, { timeout: 10000 }).catch(() => {});
-  check('a failed ad still continues the game', await page.evaluate(() => !!document.querySelector('.menu')));
+  await page.waitForFunction(() => document.querySelector('[data-act="again"]'), null, { timeout: 30000 });
+  await page.click('[data-act="again"]');
+  await page.waitForFunction(() => window.__ft.screens.current === 'click', null, { timeout: 10000 }).catch(() => {});
+  check('a failed ad still continues the game', await page.evaluate(() => window.__ft.screens.current === 'click' && !!window.__ft.session));
   await ctx.close();
 }
 
@@ -134,105 +152,38 @@ for (const [query, label] of [['&cgenv=disabled', 'other domains (SDK disabled)'
   await ctx.close();
 }
 
-// ---------------------------------------------------------------- banners
-const rectsOf = (page) => page.evaluate(() => {
-  const r = (e) => { const b = e.getBoundingClientRect(); return { l: b.left, t: b.top, r: b.right, b: b.bottom }; };
-  const slots = [...document.querySelectorAll('.ad-slot')].filter((e) => !e.hidden).map((e) => ({ cls: e.className, box: r(e.querySelector('.ad-box')), slot: r(e) }));
-  const scr = document.querySelector('.screens .screen');
-  const sr = scr && r(scr);
-  // buttons only where they can be seen: the screens scroll and clip what's below their edge
-  const btns = [...document.querySelectorAll('.screens .screen button')].filter((b) => b.offsetParent).map(r)
-    .map((b) => ({ l: Math.max(b.l, sr.l), t: Math.max(b.t, sr.t), r: Math.min(b.r, sr.r), b: Math.min(b.b, sr.b) })).filter((b) => b.r > b.l && b.b > b.t);
-  return { slots, screen: sr, btns, adBottom: getComputedStyle(document.documentElement).getPropertyValue('--ad-bottom').trim(), adRight: getComputedStyle(document.documentElement).getPropertyValue('--ad-right').trim() };
-});
-const overlaps = (a, b) => a.l < b.r && b.l < a.r && a.t < b.b && b.t < a.b;
-const bannerReqs = (page, id) => page.evaluate((id) => window.__cg.banners.filter((b) => !id || b.id === id).map((b) => ({ ...b })), id);
-// a 1.5 s refresh for the test (the stand-in SDK enforces the same minimum)
-const fast = (page) => page.evaluate(() => { const a = window.__ft; a.view.noDraw = true; a.banners.refreshMs = 1500; for (const s of a.banners.slots) s.next = Math.min(s.next, performance.now() + 2100); });
-const cloudCareer = async (page) => JSON.parse(JSON.parse(await page.evaluate(() => localStorage.getItem('cgcloud:firsttouch.career'))).data);
+// ---------------------------------------------------------------- where midgame ads may show, no banners
+const midgames = async (page) => (await calls(page)).filter((x) => x === 'requestAd:midgame').length;
+const toFullTime = (page) => page.evaluate(() => { const a = window.__ft, s = a.session, m = s.match; a.halftimeBreak = () => {}; let n = 0; while (m.phase !== 'fulltime' && n++ < 120 * 900) { m.step(1 / 120); if (m.phase === 'goal' || m.phase === 'halftime') m.requestSkip(); } m.phaseT = 5; s.frame(1 / 30); });
 {
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 720 } });
   await ctx.addInitScript(() => { localStorage.setItem('firsttouch.tutorial', 'done'); localStorage.setItem('firsttouch.settings.v1', JSON.stringify({ rev: 3, quality: 'low' })); });
-  const page = await open(ctx, '&cgrefresh=1500');
-  check('banners refresh every 30 s (the SDK minimum) in the real game', (await page.evaluate(() => window.__ft.banners.refreshMs)) === 30000);
-  // the rest of the test runs the refresh at 1.5 s (and the stand-in SDK enforces that)
-  await fast(page);
-  await page.waitForTimeout(800);
-  let r = await rectsOf(page);
-  const b0 = await bannerReqs(page);
-  check('main menu: a bottom banner sized to the window (728x90), no side banner at 1280 px', b0.length >= 1 && b0[0].id === 'cg-banner-bottom' && b0[0].width === 728 && r.slots.length === 1, JSON.stringify(b0.map((b) => `${b.id}:${b.width}x${b.height}`)));
-  check('main menu: the screen makes room, no button under the banner', r.screen.b <= r.slots[0].slot.t + 0.5 && r.btns.every((b) => !overlaps(b, r.slots[0].slot)), JSON.stringify({ screenBottom: r.screen.b, slotTop: r.slots[0].slot.t, adBottom: r.adBottom }));
-  await page.screenshot({ path: 'tests/out/cg_menu_banner.png' });
-  // refreshed at the allowed pace while the menu stays open
-  await page.waitForTimeout(5200);
-  const b1 = await bannerReqs(page, 'cg-banner-bottom');
-  const gaps = b1.slice(1).map((b, i) => b.t - b1[i].t);
-  check('the banner refreshes as soon as allowed, never too soon', b1.length >= 3 && gaps.every((g) => g >= 1500) && (await page.evaluate(() => window.__cg.tooSoon)) === 0, `${b1.length} requests, gaps ${gaps.map((g) => Math.round(g)).join(',')}`);
-  // into a match: banners gone
+  const page = await open(ctx, '&half=6');
+  await page.evaluate(() => { window.__ft.view.noDraw = true; });
+  await page.waitForTimeout(1500);
+  check('no banners anywhere', !(await calls(page)).some((x) => /banner/i.test(x)) && (await page.evaluate(() => !document.querySelector('.ad-slot'))));
   await page.click('[data-act="quick"]');
-  await page.waitForTimeout(300);
-  r = await rectsOf(page);
-  check('quick match setup: banner stays, buttons clear of it', r.slots.length === 1 && r.btns.every((b) => !overlaps(b, r.slots[0].slot)));
-  await page.click('[data-act="go"]');
-  await page.waitForFunction(() => window.__ft.session, null, { timeout: 30000 });
-  await page.waitForTimeout(500);
-  let c = await calls(page);
-  r = await rectsOf(page);
-  check('kick-off from the menus is a midgame ad break', c.includes('requestAd:midgame'));
-  check('no banners in a match (cleared, no room kept)', r.slots.length === 0 && c.includes('clearBanner:cg-banner-bottom') && r.adBottom === '0px', JSON.stringify(r.slots));
-  await page.evaluate(() => { const a = window.__ft; a.input.dragMode = true; a.unpause(); });
-  const nPlay = (await bannerReqs(page)).length;
-  await page.waitForTimeout(3500);
-  check('no banner requests during play', (await bannerReqs(page)).length === nPlay && !(await page.evaluate(() => [...document.querySelectorAll('.ad-slot')].some((e) => !e.hidden))));
-  // leaving the match from the pause menu right after the kick-off ad: no second ad in a row
-  const midBefore = (await calls(page)).filter((x) => x === 'requestAd:midgame').length;
-  await page.evaluate(() => window.__ft.pause('user'));
-  await page.click('[data-act="exit"]');
-  await page.waitForFunction(() => document.querySelector('.menu'), null, { timeout: 10000 });
-  c = await calls(page);
-  check('never two video ads back to back', c.filter((x) => x === 'requestAd:midgame').length === midBefore);
-  // a minute later the same exit would be an ad break
-  await page.click('[data-act="quick"]');
-  await page.evaluate(() => { window.__ft.platform.lastVideoAt = -1e9; });
   await page.click('[data-act="go"]');
   await page.waitForFunction(() => window.__ft.session && window.__ft.screens.current === 'click', null, { timeout: 30000 });
-  await page.evaluate(() => { const a = window.__ft; a.unpause(); a.pause('user'); a.platform.lastVideoAt = -1e9; });
+  check('kick-off from the menus is a midgame ad break', (await midgames(page)) === 1);
+  // leaving a match from the pause menu is navigation: no ad
+  await page.evaluate(() => { const a = window.__ft; a.input.dragMode = true; a.unpause(); a.pause('user'); a.platform.lastVideoAt = -1e9; });
   await page.click('[data-act="exit"]');
-  await page.waitForTimeout(150);
-  const midExit = (await calls(page)).filter((x) => x === 'requestAd:midgame').length;
   await page.waitForFunction(() => document.querySelector('.menu'), null, { timeout: 10000 });
-  check('leaving a match from the pause menu is a midgame ad break', midExit === midBefore + 2, `${midExit} midgame requests`);
-  await page.waitForTimeout(2500);
-  r = await rectsOf(page);
-  check('back on the menu the banner returns', r.slots.length === 1);
-  await ctx.close();
-}
-for (const [w, h, label, expect, touch] of [[1440, 900, 'wide desktop', ['728x90', '300x250'], false], [844, 390, 'phone landscape', ['320x50'], true], [390, 844, 'phone portrait', ['320x100'], true]]) {
-  const ctx = await browser.newContext({ viewport: { width: w, height: h }, ...(touch ? { isMobile: true, hasTouch: true, deviceScaleFactor: 1 } : {}) });
-  await ctx.addInitScript(() => { localStorage.setItem('firsttouch.tutorial', 'done'); localStorage.setItem('firsttouch.settings.v1', JSON.stringify({ rev: 3, quality: 'low' })); });
-  const page = await open(ctx, '&cgrefresh=1500');
-  await fast(page);
-  await page.waitForTimeout(1000);
-  // the career hub, the screen players spend the most time on
-  await page.evaluate(() => { const s = window.__ft.screens; s.newCareer(); document.querySelector('[data-act="go"]').click(); });
-  await page.waitForTimeout(800);
-  const r = await rectsOf(page);
-  const sizes = [...new Set((await bannerReqs(page)).map((b) => `${b.width}x${b.height}`))];
-  const fits = r.slots.every((sl) => sl.box.l >= 0 && sl.box.t >= 0 && sl.box.r <= w && sl.box.b <= h);
-  const clear = r.slots.every((sl) => r.btns.every((b) => !overlaps(b, sl.slot)) && !overlaps(r.screen, sl.slot));
-  check(`${label}: ${expect.join(' + ')} on the career hub, on screen, covering nothing`, JSON.stringify(sizes.sort()) === JSON.stringify([...expect].sort()) && r.slots.length === expect.length && fits && clear, JSON.stringify({ sizes, slots: r.slots.length, fits, clear }));
-  await page.screenshot({ path: `tests/out/cg_hub_banner_${w}x${h}.png` });
-  await ctx.close();
-}
-for (const [query, label] of [['&cgbanner=basic', 'Basic Launch'], ['&cgbanner=mobileapp', 'the CrazyGames mobile app']]) {
-  const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
-  await ctx.addInitScript(() => localStorage.setItem('firsttouch.tutorial', 'done'));
-  const page = await open(ctx, query + '&cgrefresh=1500');
-  await fast(page);
-  await page.waitForTimeout(4000);
-  const r = await rectsOf(page);
-  const n = (await calls(page)).filter((x) => x.startsWith('requestBanner')).length;
-  check(`${label}: banners give up after the first refusal and leave no gap`, n === 2 && r.slots.length === 0 && r.adBottom === '0px' && r.adRight === '0px', `${n} requests`);
+  check('Exit from the pause menu shows no ad', (await midgames(page)) === 1);
+  // straight back into a match within a minute of the last ad: no second ad
+  await page.evaluate(() => { window.__ft.platform.lastVideoAt = performance.now(); });
+  await page.click('[data-act="quick"]');
+  await page.click('[data-act="go"]');
+  await page.waitForFunction(() => window.__ft.session && window.__ft.screens.current === 'click', null, { timeout: 30000 });
+  check('never two video ads back to back', (await midgames(page)) === 1);
+  // the result screen's navigational buttons: no ad
+  await page.evaluate(() => { const a = window.__ft; a.loop = () => {}; a.unpause(); a.platform.lastVideoAt = -1e9; });
+  await toFullTime(page);
+  await page.waitForSelector('[data-act="change"]', { timeout: 30000 });
+  await page.click('[data-act="change"]');
+  await page.waitForTimeout(300);
+  check('Change teams on the result screen shows no ad', (await midgames(page)) === 1 && (await page.evaluate(() => window.__ft.screens.current === 'quick')));
   await ctx.close();
 }
 
@@ -248,21 +199,26 @@ for (const [query, label] of [['&cgbanner=basic', 'Basic Launch'], ['&cgbanner=m
   await page.waitForTimeout(800);
   const after = await page.evaluate(() => ({ cg: { paused: window.__cg.pausedDuringAd, gameplay: window.__cg.gameplayDuringAd, muted: window.__cg.mutedDuringAd, tStart: window.__cg.tStart, tEnd: window.__cg.tEnd }, screen: window.__ft.screens.current, paused: window.__ft.paused }));
   check('during the ad the match is paused, muted and frozen', after.cg.paused === true && after.cg.gameplay === false && after.cg.muted === true && after.cg.tStart === after.cg.tEnd, JSON.stringify(after.cg));
-  check('after the ad one click captures the mouse for the second half', after.screen === 'click' && after.paused, JSON.stringify(after));
-  await page.evaluate(() => { const a = window.__ft; a.input.dragMode = true; a.resume(); });
+  const cd = await page.evaluate(() => ({ screen: window.__ft.screens.current, paused: window.__ft.paused, countdown: !!window.__ft.countdown, shown: !document.querySelector('.hud-count').classList.contains('hidden'), title: document.querySelector('.hud-count .c-title').textContent, t: window.__ft.session.match.time }));
+  check('after the ad the second half starts by itself: no click, a countdown plays', cd.screen !== 'click' && !cd.paused && cd.countdown && cd.shown && /second half/i.test(cd.title), JSON.stringify(cd));
+  await page.waitForTimeout(600);
+  check('the match waits during the countdown', (await page.evaluate(() => window.__ft.session.match.time)) === cd.t || !(await page.evaluate(() => !!window.__ft.countdown)));
   await page.waitForFunction(() => window.__ft.session.match.half === 2 && window.__ft.session.match.phase === 'playing', null, { timeout: 60000 });
-  check('the second half plays on', await page.evaluate(() => !window.__ft.paused && window.__ft.platform.playing));
+  await page.waitForTimeout(900);
+  const go = await page.evaluate(() => ({ paused: window.__ft.paused, playing: window.__ft.platform.playing, count: !document.querySelector('.hud-count').classList.contains('hidden'), hint: !!document.querySelector('.tut-click:not([hidden])') && /take control/i.test(document.querySelector('.tut-click:not([hidden])').textContent) }));
+  check('then the second half plays, with a hint that a click captures the mouse', !go.paused && go.playing && !go.count && go.hint, JSON.stringify(go));
   await ctx.close();
 }
 
 // ---------------------------------------------------------------- rewarded ads
 const career = (page) => page.evaluate(() => JSON.parse(JSON.stringify(window.__ft.store.career)));
+const cloudCareer = async (page) => JSON.parse(JSON.parse(await page.evaluate(() => localStorage.getItem('cgcloud:firsttouch.career'))).data);
 const totalXp = (c) => c.player.level * 100 + c.player.xp;
 {
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 720 } });
   await ctx.addInitScript(() => { localStorage.setItem('firsttouch.tutorial', 'done'); localStorage.setItem('firsttouch.settings.v1', JSON.stringify({ rev: 3, quality: 'low' })); });
-  const page = await open(ctx, '&cgrefresh=1500&half=6');
-  await fast(page);
+  const page = await open(ctx, '&half=6');
+  await page.evaluate(() => { window.__ft.view.noDraw = true; });
   await page.evaluate(() => { const s = window.__ft.screens; s.newCareer(); document.querySelector('[data-act="go"]').click(); });
   await page.waitForTimeout(400);
   check('career hub offers a match boost (labelled as an ad)', await page.evaluate(() => /AD/.test(document.querySelector('[data-act="rwBoost"]')?.textContent || '')));
@@ -294,10 +250,6 @@ const totalXp = (c) => c.player.level * 100 + c.player.xp;
   await page.waitForSelector('.rw-done', { timeout: 10000 });
   c = await career(page);
   check('Double XP adds the match XP again and saves it', totalXp(c) - before === gained && totalXp(await cloudCareer(page)) === totalXp(c), `${before} -> ${totalXp(c)} (+${gained})`);
-  await page.evaluate(() => window.__ft.updatePlatform());
-  await page.waitForTimeout(300);
-  await page.evaluate(() => window.__ft.updatePlatform());
-  check('a banner shows on the match report', (await rectsOf(page)).slots.length === 1);
   // training: an extra XP session
   await page.evaluate(() => { const a = window.__ft; a.endSession(); a.store.career.trainingAvailable = false; a.screens.training(true); });
   await page.click('[data-act="rwTrain"]');

@@ -8,12 +8,11 @@
 //   earlier in this browser's localStorage are copied over once.
 // - loadingStart / loadingStop around start-up; gameplayStart / gameplayStop while a
 //   match, drill or the tutorial is actually being played; happytime on a win.
-// - midgame ads at every natural break (half time, leaving a result screen, leaving a
-//   match from the pause menu, kick-off from the menus). The SDK decides whether one is
-//   shown (at most one every 3 minutes, none right at the start); the game never shows
-//   two ads back to back.
+// - midgame ads only just before play starts (kick-off from the menus, Play again, a
+//   drill starting, and the second half). The SDK decides whether one is shown (at most
+//   one every 3 minutes, none right at the start); the game never shows two ads back to
+//   back. No ads on purely navigational buttons, and no banners.
 // - rewarded ads only when the player asks for one, and the reward only when it finished.
-// - banners (src/platform/banners.js) on menu and result screens, never during play.
 // - the game is muted and paused while a video ad plays; the platform's mute setting
 //   silences the game.
 // - no fullscreen requests of our own (the platform has its own fullscreen button).
@@ -172,11 +171,4 @@ export const platform = {
       if (onEnd) onEnd(res, code);
     }, onReward);
   },
-
-  // banners: the SDK fills the element with this id at the given size
-  requestBanner(id, width, height) {
-    if (!this.sdk || !this.sdk.banner) return Promise.reject(new Error('bannersUnavailable'));
-    try { return Promise.resolve(this.sdk.banner.requestBanner({ id, width, height })); } catch (e) { return Promise.reject(e); }
-  },
-  clearBanner(id) { this.call((s) => s.banner && s.banner.clearBanner(id)); },
 };

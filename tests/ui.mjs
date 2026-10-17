@@ -38,8 +38,9 @@ await click('Visual Style');
 await page.waitForTimeout(500);
 await page.locator('.preview[data-s="neo"]').click();
 await page.waitForTimeout(300);
-out.style = await page.evaluate(() => [window.__ft.style, localStorage.getItem('firsttouch.style')]);
 await click('Done');
+// the style is saved once, with Done
+out.style = await page.evaluate(() => [window.__ft.style, localStorage.getItem('firsttouch.style')]);
 await click('Exit to Main Menu');
 await page.waitForTimeout(400);
 // training menu
