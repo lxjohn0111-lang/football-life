@@ -49,6 +49,7 @@ Start at a community club and work your way up five tiers, from League Two to th
 - E: tackle
 - C: slide tackle
 - P: pause
+- Tab: free / capture the mouse cursor
 - Enter: skip the tutorial
 
 **Controls (mobile):**
@@ -74,7 +75,8 @@ In `src/platform/crazygames.js`:
 
 - `CrazyGames.SDK.init()` before the game starts, then `game.loadingStart()` / `game.loadingStop()` around loading.
 - **Saving:** every save goes through `SDK.data` (`getItem` / `setItem` / `removeItem`). Keys: `firsttouch.career`, `firsttouch.career.backup`, `firsttouch.settings.v1`, `firsttouch.style`, `firsttouch.tutorial`. A career of 20 matches takes about 25 KB (the save plus its backup); the match log is capped at 400 matches, so even a very long career stays around 300 KB, well under the 1 MB limit. Saves made earlier in the same browser's localStorage (for example on another site) are copied into the data module once.
-- `game.gameplayStart()` / `game.gameplayStop()` follow real play: on while a match, drill or the tutorial is being played; off on the pause menu, the result screen, menus and during ads. A pause because the tab or the page lost focus does not send `gameplayStop`.
+- `game.gameplayStart()` / `game.gameplayStop()` follow real play: on while a match, drill or the tutorial is being played; off whenever play is paused (the pause menu, a lost focus, the cursor freed with Esc or Tab), on the result screen, in menus and during ads.
+- **Player name** (`user.getUser()`, `user.addAuthListener()`): locked. A logged-in player plays under their CrazyGames username (updated if they log in or out during the session), a guest under the game's default name; the Create-a-player screen shows the name instead of a text field.
 - `game.happytime()` when you win a match and when you finish the tutorial.
 - **Midgame ads** (`ad.requestAd('midgame')`) only just before gameplay starts, never on navigational buttons (Continue, Main menu, Change teams, Back, Exit) and never during play: kick-off from the menus (Play Match, Kick Off, starting a drill), Play again / Try again on a result screen, and the second half of every match. The SDK decides whether one is shown (at most one every 3 minutes); the game also never requests one within 60 seconds of another video ad, so ads are never chained. At half time the match waits for the SDK's answer; while an ad plays the game is paused and muted (`gameplayStop`); afterwards the second half starts by itself with a short "SECOND HALF 3 · 2 · 1 · GO!" countdown, no click needed.
 - **Rewarded ads** (`ad.requestAd('rewarded')`), always chosen by the player, labelled with an AD chip, and the reward is given only when the ad finished (`adFinished`; never on `adError`):

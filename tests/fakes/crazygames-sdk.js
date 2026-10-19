@@ -5,7 +5,9 @@
 // Query options: ?cgenv=local|crazygames|disabled (default crazygames),
 // ?cgdata=off (data module not enabled: its calls throw), ?cgad=error (video ads fail),
 // ?cgadblock=1 (hasAdblock() says yes), ?cgbanner=basic|unfilled|mobileapp,
-// ?cgrefresh=<ms> (minimum time between two requests for one banner, default 30000).
+// ?cgrefresh=<ms> (minimum time between two requests for one banner, default 30000),
+// ?cguser=<name> (logged in as that CrazyGames user; a guest otherwise).
+// window.__cg.login(name) / logout() change the account during the session.
 (() => {
   const q = new URLSearchParams(location.search);
   const env = q.get('cgenv') || 'crazygames';
@@ -21,6 +23,8 @@
     clear() { for (const k of Object.keys(localStorage)) if (k.startsWith(P)) localStorage.removeItem(k); },
   };
   const settingsListeners = [];
+  const authListeners = [];
+  let user = q.get('cguser') ? { username: q.get('cguser'), profilePictureUrl: '' } : null;
   const guard = (o) => new Proxy(o, { get: (t, p) => (env === 'disabled' && typeof t[p] === 'function' ? disabled : t[p]) });
   const banners = [];
   const lastBanner = {};
@@ -32,12 +36,20 @@
     tooSoon: 0,
     rewardedWatched: 0,
     setMute(m) { SDK.game.settings.muteAudio = m; for (const f of settingsListeners) f({ muteAudio: m, disableChat: false }); },
+    login(name) { user = { username: name, profilePictureUrl: '' }; for (const f of authListeners) f(user); },
+    logout() { user = null; for (const f of authListeners) f(null); },
   };
   const fail = (code) => Promise.reject(Object.assign(new Error(code), { code }));
   const SDK = {
     environment: 'uninitialized',
     async init() { rec('init'); await new Promise((r) => setTimeout(r, 30)); SDK.environment = env; },
     data: guard(data),
+    user: guard({
+      isUserAccountAvailable: true,
+      async getUser() { rec('getUser'); await new Promise((r) => setTimeout(r, 10)); return user; },
+      addAuthListener(f) { authListeners.push(f); },
+      removeAuthListener(f) { const i = authListeners.indexOf(f); if (i >= 0) authListeners.splice(i, 1); },
+    }),
     game: guard({
       settings: { muteAudio: q.get('muteAudio') === 'true', disableChat: false },
       loadingStart() { rec('loadingStart'); },

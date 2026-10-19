@@ -1,7 +1,8 @@
 // Keyboard + mouse input with pointer lock (requested inside click handlers)
 // and a click-and-drag / arrow-key look fallback when pointer lock is refused.
 // One control scheme everywhere: WASD move, mouse look, Shift sprint,
-// LMB shoot, RMB pass, Space through pass / request, E tackle, C slide, P pause.
+// LMB shoot, RMB pass, Space through pass / request, E tackle, C slide, P pause, Tab
+// frees / captures the mouse cursor.
 // Esc is left to the browser (it frees the mouse and leaves fullscreen); the game never
 // binds it, so leaving fullscreen never also pauses or resumes anything.
 // On touch screens the on-screen controls (ui/touch.js) feed the same actions:
@@ -17,6 +18,7 @@ export const CONTROLS = [
   ['E', 'Standing tackle (lunges at the ball when it is close)'],
   ['C', 'Slide tackle'],
   ['P', 'Pause'],
+  ['Tab', 'Free / capture the mouse cursor'],
 ];
 
 export const TOUCH_CONTROLS = [
@@ -130,6 +132,8 @@ export class Input {
   keydown(e) {
     const k = e.code;
     if (!this.active) return;
+    // Tab toggles the cursor lock (and never moves the browser's focus during play)
+    if (k === 'Tab') { e.preventDefault(); if (!e.repeat && this.onToggleLock) this.onToggleLock(); return; }
     if (['Space', 'ShiftLeft', 'ShiftRight', 'KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(k)) e.preventDefault();
     if (e.repeat) return;
     this.keys.add(k);

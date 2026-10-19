@@ -19,7 +19,7 @@ import { CoachCard } from './coach.js';
 import { icon } from './icons.js';
 import { defaultPlayer } from '../career/teams.js';
 import { resolveKits } from '../render/palette.js';
-import { platform } from '../platform/crazygames.js';
+import { platform, GUEST_NAME } from '../platform/crazygames.js';
 
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const f1 = (x) => (Math.round(x * 10) / 10).toFixed(1);
@@ -168,6 +168,8 @@ export class Screens {
   newCareer() {
     this.current = 'new';
     const d = defaultPlayer();
+    // on CrazyGames the name is the account's (or the guest name) and can't be changed
+    const locked = platform.lockedName;
     const st = { pos: 'ST', club: clubsInTier(1)[0].id, num: 9, nat: 0, foot: 'R', skin: d.look.skin, hair: d.look.hair, boots: d.look.boots };
     const sw = (key, list) => `<div class="swatches" data-sw="${key}">${list.map((c) => `<button class="sw ${c === st[key] ? 'on' : ''}" data-c="${c}" style="background:${c}" aria-label="${key} ${c}"></button>`).join('')}</div>`;
     const pos = POSITIONS.map((p) => `<button class="card pick choice ${p.id === st.pos ? 'on' : ''}" data-pos="${p.id}"><b>${p.name}</b><span>${POS_SHORT[p.id]}</span></button>`).join('');
@@ -178,7 +180,9 @@ export class Screens {
         <div class="grid2">
           <div class="col">
             <div class="h-sec">Name</div>
-            <input class="field" id="nc-name" maxlength="22" value="${esc(d.name)}" aria-label="Name">
+            ${locked ? `<div class="field locked" id="nc-name-locked" aria-label="Name">${icon('user', 18)}<span>${esc(locked)}</span></div>
+            <div class="small muted" style="margin-top:4px">${platform.user ? 'Your CrazyGames username' : 'Guest name · log in to CrazyGames to play under your username'}</div>`
+    : `<input class="field" id="nc-name" maxlength="22" value="${esc(d.name)}" aria-label="Name">`}
             <div class="row" style="gap:var(--s5)">
               <div><div class="h-sec">Number</div><div class="stepper"><button class="btn icon sm" data-step="-1" aria-label="Lower">${icon('minus')}</button><span class="pv" id="nc-num">9</span><button class="btn icon sm" data-step="1" aria-label="Higher">${icon('plus')}</button></div></div>
               <div><div class="h-sec">Foot</div>${this.seg('foot', [['L', 'Left'], ['R', 'Right']], 'R')}</div>
@@ -200,7 +204,7 @@ export class Screens {
       </div>`, {
       back: () => this.mainMenu(),
       go: () => {
-        const name = el.querySelector('#nc-name').value.trim() || 'A. Newcomer';
+        const name = locked || el.querySelector('#nc-name').value.trim() || GUEST_NAME;
         const career = createCareer({
           name, number: st.num, nationality: NATIONALITIES[st.nat], foot: st.foot, role: st.pos, clubId: st.club,
           look: { skin: st.skin, hair: st.hair, boots: st.boots },
@@ -380,25 +384,40 @@ export class Screens {
         + (session.doubled ? '' : this.rewardBtn('double', `Double your XP (+${summary.xp})`))
       : o.quick ? '<div class="reward plain">Quick match · no career effect</div>' : '';
     const el = this.show(`
-      <div class="panel result">
-        <div class="small muted" style="font-weight:800;text-transform:uppercase;letter-spacing:1px">${esc(o.title || 'Full time')}</div>
+      <div class="panel result report">
+        <div class="small muted r-title" style="font-weight:800;text-transform:uppercase;letter-spacing:1px">${esc(o.title || 'Full time')}</div>
         <div class="result-word ${outcome}">${word}</div>
-        <div class="scoreline"><div class="side">${crestFor(0)}${esc(m.teams[0].name)}</div><div class="sc">${rep.score[0]} - ${rep.score[1]}</div><div class="side">${crestFor(1)}${esc(m.teams[1].name)}</div></div>
-        <div class="scorers">${goals}</div>
-        <div class="rating-hero"><span class="lab">Your rating</span><span class="num ${rep.rating >= 7 ? 'hi' : rep.rating < 6 ? 'lo' : ''}" id="r-num">0.0</span></div>
-        <div class="key-stats">${key.map(([v, l]) => mini(v, l)).join('')}</div>
-        ${reward}
-        <details class="more"><summary>More stats</summary>
-          <div class="mini-stats">${mini(`${st.passCmp}/${st.passAtt}`, 'Passes')}${mini(st.shots, 'Shots')}${mini(st.shotsOn, 'On target')}${mini(st.keyPasses, 'Chances')}${mini(st.tacklesWon, 'Tackles')}${mini(st.interceptions, 'Intercept.')}${mini(st.possLost, 'Lost ball')}${mini(st.touches, 'Touches')}</div>
-          <div class="grid2" style="margin-top:var(--s3)"><div class="why small"><div class="h-sec" style="margin:0 0 6px">Rating</div>${why}</div>
-          <div class="small" style="font-weight:700;color:var(--text2)"><div class="h-sec" style="margin:0 0 6px">Match</div>Possession ${rep.possession[0]}% - ${rep.possession[1]}%<br>Shots ${rep.teamShots[0]} - ${rep.teamShots[1]}<br>Minutes ${rep.minutes}<br>Player of the match: ${rep.motm ? esc(rep.motm.name) : '-'}</div></div>
-        </details>
+        <div class="r-cols">
+          <div class="r-match">
+            <div class="scoreline"><div class="side">${crestFor(0)}${esc(m.teams[0].name)}</div><div class="sc">${rep.score[0]} - ${rep.score[1]}</div><div class="side">${crestFor(1)}${esc(m.teams[1].name)}</div></div>
+            <div class="scorers" title="${goals}">${goals}</div>
+          </div>
+          <div class="r-you">
+            <div class="rating-hero"><span class="lab">Your rating</span><span class="num ${rep.rating >= 7 ? 'hi' : rep.rating < 6 ? 'lo' : ''}" id="r-num">0.0</span></div>
+            <div class="key-stats">${key.map(([v, l]) => mini(v, l)).join('')}</div>
+          </div>
+        </div>
+        <div class="r-reward">${reward}</div>
         <div class="actions mid">
           ${o.career ? '<button class="btn primary lg" data-act="cont">Continue</button>'
             : o.quick ? `<button class="btn primary lg" data-act="again">${icon('play')} Play again</button><button class="btn" data-act="change">Change teams</button><button class="btn ghost" data-act="menu">Main menu</button>`
               : '<button class="btn primary lg" data-act="menu">Continue</button>'}
+          <button class="btn ghost sm" data-act="more">${icon('chart', 16)} More stats</button>
+        </div>
+        <div class="more" hidden>
+          ${goals ? `<div class="small" style="color:var(--text2);font-weight:700;text-align:center;margin-top:var(--s2)">${goals}</div>` : ''}
+          <div class="mini-stats">${mini(`${st.passCmp}/${st.passAtt}`, 'Passes')}${mini(st.shots, 'Shots')}${mini(st.shotsOn, 'On target')}${mini(st.keyPasses, 'Chances')}${mini(st.tacklesWon, 'Tackles')}${mini(st.interceptions, 'Intercept.')}${mini(st.possLost, 'Lost ball')}${mini(st.touches, 'Touches')}</div>
+          <div class="grid2" style="margin-top:var(--s3)"><div class="why small"><div class="h-sec" style="margin:0 0 6px">Rating</div>${why}</div>
+          <div class="small" style="font-weight:700;color:var(--text2)"><div class="h-sec" style="margin:0 0 6px">Match</div>Possession ${rep.possession[0]}% - ${rep.possession[1]}%<br>Shots ${rep.teamShots[0]} - ${rep.teamShots[1]}<br>Minutes ${rep.minutes}<br>Player of the match: ${rep.motm ? esc(rep.motm.name) : '-'}</div></div>
         </div>
       </div>`, {
+      // the extra stats open below the buttons (the only time the report may scroll)
+      more: (b) => {
+        const box = el.querySelector('.more');
+        box.hidden = !box.hidden;
+        b.innerHTML = `${icon('chart', 16)} ${box.hidden ? 'More stats' : 'Hide stats'}`;
+        if (!box.hidden) box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      },
       cont: () => { app.endSession(); this.hub(); },
       again: () => this.adBreak(() => { app.endSession(); app.startQuickMatch(this.lastQuick || {}); }),
       change: () => { app.endSession(); this.quickMatch(); },
@@ -882,14 +901,20 @@ export class Screens {
       <div class="actions mid"><button class="btn primary" data-act="back">Back</button></div></div>`, { back: () => this.pauseMenu() });
   }
 
-  // one click starts play (pointer lock needs a user gesture). resume: the mouse was
-  // freed with Esc during play; just a click to carry on (P still opens the menu)
+  // one click starts play (pointer lock needs a user gesture). resume: the cursor was
+  // freed (Esc or Tab) during play; a click or Tab carries on, P opens the menu. retry: the
+  // browser didn't capture the cursor last time, so it asks once more (and after two
+  // misses also offers drag-to-look)
   clickToPlay(o = {}) {
     this.current = 'click';
     const sess = this.app.session;
     if (o.resume) {
-      this.show(`<div class="panel narrow go-card"><div class="go-big">Click to continue</div><div class="go-sub">P opens the menu</div></div>`, {}, 'screen center dim');
-      this.root.firstChild.addEventListener('click', () => { this.sfx('uiConfirm', 0.3); this.app.resume(); }, { once: true });
+      const sub = o.retry ? 'Click once more to capture the mouse' : 'Click or press Tab · P opens the menu';
+      const drag = o.retry >= 2 ? '<div class="actions mid"><button class="btn sm ghost" data-act="drag">Play with drag-to-look</button></div>' : '';
+      this.show(`<div class="panel narrow go-card"><div class="go-big">Click to continue</div><div class="go-sub">${sub}</div>${drag}</div>`, {
+        drag: (b, e) => { e.stopPropagation(); this.app.input.dragMode = true; this.app.resume(); },
+      }, 'screen center dim');
+      this.root.firstChild.addEventListener('click', (e) => { if (e.target.closest('[data-act]')) return; this.sfx('uiConfirm', 0.3); this.app.resume(); }, { once: true });
       return;
     }
     const first = !this.seenControls;
@@ -903,15 +928,6 @@ export class Screens {
     this.show(`<div class="panel mid go-card">${title}<div class="go-big">${touch ? 'Tap to play' : 'Click to play'}</div>
       ${first ? keys : `<div class="go-sub">${touch ? 'Left thumb move · right thumb look' : 'WASD move · mouse look · P pause'}</div>`}</div>`, {}, 'screen center dim');
     this.root.firstChild.addEventListener('click', () => { this.sfx('uiConfirm', 0.3); this.app.resume(); }, { once: true });
-  }
-
-  lockRefused() {
-    this.current = 'lock';
-    this.show(`<div class="panel narrow center-t"><div class="go-big" style="font-size:36px">Click to resume</div><p class="lead">The browser didn't capture the mouse. Click again, or play with drag-to-look.</p>
-      <div class="actions mid"><button class="btn primary lg" data-act="r">Resume</button><button class="btn" data-act="d">Drag-look</button></div></div>`, {
-      r: () => this.app.resume(),
-      d: () => { this.app.input.dragMode = true; this.app.resume(); },
-    });
   }
 }
 

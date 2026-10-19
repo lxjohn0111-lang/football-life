@@ -8,7 +8,10 @@
 // game paused and muted while one plays and the second half starting by itself after a
 // half-time ad; no banners at all; rewarded ads (match boost, double XP, extra training)
 // that give their reward only when watched, and aren't offered when no ad can play.
-// Also: settings are saved once (Done), and Esc freeing the mouse never opens the menu.
+// Also: settings are saved once (Done), Esc freeing the mouse never opens the menu, Tab
+// frees and captures the cursor (gameplayStop / gameplayStart with it), a refused capture
+// just asks for another click, drag-to-look can go back to a captured cursor, and the
+// player's name is locked to the CrazyGames username (or the guest name).
 // Needs `npm run crazygames` first and `node server.js` running. Usage: node tests/crazygames.mjs
 import { createRequire } from 'node:module';
 import fs from 'node:fs';
@@ -52,7 +55,7 @@ const calls = (page) => page.evaluate(() => window.__cg.calls.slice());
   check('saves go to the data module', st.env === 'crazygames' && st.saves === 'crazygames', JSON.stringify(st));
   check('earlier localStorage saves are copied into the data module', st.fov === 111 && (await page.evaluate(() => !!localStorage.getItem('cgcloud:firsttouch.settings.v1'))));
   // a new career and a settings change
-  await page.evaluate(() => { const s = window.__ft.screens; s.newCareer(); document.querySelector('#nc-name').value = 'Cloud Kid'; document.querySelector('[data-act="go"]').click(); });
+  await page.evaluate(() => { const s = window.__ft.screens; s.newCareer(); document.querySelector('[data-act="go"]').click(); });
   await page.evaluate(() => { const a = window.__ft; a.settings.sensitivity = 1.7; a.applySettings(); a.commitSettings(); });
   const stored = await page.evaluate(() => ({ cloud: !!localStorage.getItem('cgcloud:firsttouch.career'), local: !!localStorage.getItem('firsttouch.career'), sens: JSON.parse(localStorage.getItem('cgcloud:firsttouch.settings.v1')).sensitivity }));
   check('career and settings are written through the data module only', stored.cloud && !stored.local && stored.sens === 1.7, JSON.stringify(stored));
@@ -70,7 +73,7 @@ const calls = (page) => page.evaluate(() => window.__cg.calls.slice());
   await page.waitForFunction(() => window.__ft, null, { timeout: 30000 });
   await page.waitForTimeout(500);
   const back = await page.evaluate(() => ({ name: window.__ft.store.career && window.__ft.store.career.player.name, sens: window.__ft.settings.sensitivity }));
-  check('after a reload the career and settings come back from the data module', back.name === 'Cloud Kid' && back.sens === 1.7, JSON.stringify(back));
+  check('after a reload the career and settings come back from the data module', back.name === 'A. Newcomer' && back.sens === 1.7, JSON.stringify(back));
   await ctx.close();
 }
 
@@ -95,7 +98,7 @@ const calls = (page) => page.evaluate(() => window.__cg.calls.slice());
   await page.evaluate(() => window.__ft.unpause()); await tick();
   await page.evaluate(() => window.__ft.onBlur()); await tick();
   c = await calls(page);
-  check('losing focus pauses the game but sends no gameplayStop', c[c.length - 1] === 'gameplayStart' && (await page.evaluate(() => window.__ft.paused)), c.slice(-3).join(','));
+  check('losing focus opens the pause menu and sends gameplayStop', c[c.length - 1] === 'gameplayStop' && (await page.evaluate(() => window.__ft.paused && !!document.querySelector('[data-act="exit"]'))), c.slice(-3).join(','));
   await page.evaluate(() => window.__ft.unpause()); await tick();
   // platform mute
   await page.evaluate(() => { window.__ft.audio.init(); window.__cg.setMute(true); });
@@ -277,6 +280,93 @@ const totalXp = (c) => c.player.level * 100 + c.player.xp;
   await page.evaluate(() => { const s = window.__ft.screens; s.newCareer(); document.querySelector('[data-act="go"]').click(); });
   await page.waitForTimeout(500);
   check('without the SDK: no banner slots and no rewarded buttons', await page.evaluate(() => !document.querySelector('.ad-slot') && !document.querySelector('.btn.rw')));
+  await ctx.close();
+}
+
+// ---------------------------------------------------------------- cursor lock: Tab, refused captures, drag-to-look
+{
+  const ctx = await browser.newContext({ viewport: { width: 960, height: 540 } });
+  await ctx.addInitScript(() => { localStorage.setItem('firsttouch.tutorial', 'done'); localStorage.setItem('firsttouch.settings.v1', JSON.stringify({ rev: 3, quality: 'low' })); });
+  const page = await open(ctx, '&auto=quick&venue=community&half=60');
+  // the browser's pointer lock is stood in for: requests are counted, grants are simulated
+  await page.evaluate(() => {
+    const a = window.__ft, inp = a.input;
+    a.view.noDraw = true;
+    window.__req = 0;
+    inp.requestLock = () => { window.__req++; return true; };
+    inp.exitLock = () => { if (inp.locked) { inp.locked = false; inp.lastLockExit = performance.now(); } };
+    window.__grant = () => { inp.locked = true; inp.dragMode = false; inp.onLockGained(); };
+    a.unpause(); a.updatePlatform();
+  });
+  const st = () => page.evaluate(() => { const a = window.__ft; a.updatePlatform(); return { paused: a.paused, screen: a.screens.current, playing: a.platform.playing, req: window.__req, locked: a.input.locked, drag: a.input.dragMode, text: (document.querySelector('.screens').textContent || '').slice(0, 80) }; });
+  await page.keyboard.press('Tab');
+  await page.waitForTimeout(100);
+  await page.evaluate(() => window.__grant());
+  let s1 = await st();
+  check('Tab captures the cursor during play', s1.req === 1 && s1.locked && !s1.paused && s1.playing, JSON.stringify(s1));
+  const focusBefore = await page.evaluate(() => document.activeElement && document.activeElement.tagName);
+  await page.keyboard.press('Tab');
+  await page.waitForTimeout(100);
+  s1 = await st();
+  const focusAfter = await page.evaluate(() => document.activeElement && document.activeElement.tagName);
+  let c = await calls(page);
+  check('Tab again frees it: the match waits behind "Click to continue", gameplayStop', !s1.locked && s1.paused && s1.screen === 'click' && /Tab/.test(s1.text) && c[c.length - 1] === 'gameplayStop' && focusBefore === focusAfter, JSON.stringify({ ...s1, focusBefore, focusAfter }));
+  // Tab right after the cursor was freed: the capture waits out the browser's 1 s guard
+  await page.keyboard.press('Tab');
+  await page.waitForTimeout(300);
+  const early = (await st()).req;
+  await page.waitForTimeout(1200);
+  const late = (await st()).req;
+  check('capturing again waits out the browser\'s second after a release', early === 1 && late === 2, JSON.stringify({ early, late }));
+  await page.evaluate(() => window.__grant());
+  s1 = await st();
+  c = await calls(page);
+  check('and play resumes with gameplayStart once captured', !s1.paused && s1.locked && c[c.length - 1] === 'gameplayStart', JSON.stringify(s1));
+  // a refused capture: no warning, just one more click (drag-to-look offered after two misses)
+  await page.evaluate(() => { const a = window.__ft; a.pause('lock'); a.input.lastLockExit = 0; a.resume(); a.input.onLockError(); });
+  s1 = await st();
+  check('a refused capture asks for one more click, no warning', s1.paused && s1.screen === 'click' && /once more/i.test(s1.text) && !(await page.evaluate(() => !!document.querySelector('[data-act="drag"]'))), JSON.stringify(s1));
+  await page.evaluate(() => { const a = window.__ft; a.resume(); a.input.onLockError(); });
+  check('after two refusals drag-to-look is offered', await page.evaluate(() => !!document.querySelector('[data-act="drag"]')));
+  await page.click('[data-act="drag"]');
+  await page.waitForTimeout(400);
+  s1 = await st();
+  const hint = await page.evaluate(() => { const e = document.querySelector('.drag-hint'); return !!e && !e.hidden && /Tab/.test(e.textContent); });
+  check('drag-to-look plays on, with a reminder that Tab captures the cursor', !s1.paused && s1.drag && hint, JSON.stringify({ ...s1, hint }));
+  const before = (await st()).req;
+  await page.keyboard.press('Tab');
+  await page.waitForTimeout(100);
+  s1 = await st();
+  check('Tab leaves drag-to-look and captures the cursor again', s1.req === before + 1 && !s1.drag, JSON.stringify(s1));
+  await ctx.close();
+}
+
+// ---------------------------------------------------------------- the player's name is locked
+for (const [query, expect, label] of [['&cguser=SuperStriker99', 'SuperStriker99', 'logged in'], ['', 'A. Newcomer', 'guest']]) {
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 720 } });
+  await ctx.addInitScript(() => {
+    localStorage.setItem('firsttouch.tutorial', 'done');
+  });
+  const page = await open(ctx, query);
+  await page.evaluate(() => { window.__ft.view.noDraw = true; window.__ft.screens.newCareer(); });
+  const f = await page.evaluate(() => ({ input: !!document.querySelector('#nc-name'), shown: (document.querySelector('#nc-name-locked') || {}).textContent }));
+  check(`${label}: the name can't be typed in, it is the ${label === 'guest' ? 'guest name' : 'CrazyGames username'}`, !f.input && (f.shown || '').includes(expect), JSON.stringify(f));
+  await page.click('[data-act="go"]');
+  const name = await page.evaluate(() => window.__ft.store.career.player.name);
+  check(`${label}: the career plays under that name`, name === expect, name);
+  if (label === 'guest') {
+    // logging in during the session: the career takes the account's username
+    await page.evaluate(() => window.__cg.login('LateLogin'));
+    await page.waitForTimeout(200);
+    const after = await page.evaluate(() => ({ name: window.__ft.store.career.player.name, saved: JSON.parse(JSON.parse(localStorage.getItem('cgcloud:firsttouch.career')).data).player.name, hub: document.querySelector('.screens').textContent.includes('LateLogin') }));
+    check('logging in during the session switches the career to the username', after.name === 'LateLogin' && after.saved === 'LateLogin' && after.hub, JSON.stringify(after));
+  } else {
+    // a name typed in before the lock is replaced when the career loads
+    await page.evaluate(() => { const a = window.__ft; a.store.career.player.name = 'Typed Name'; a.store.save(); });
+    await page.reload();
+    await page.waitForFunction(() => window.__ft, null, { timeout: 30000 });
+    check('an older typed-in name is replaced by the username on load', (await page.evaluate(() => window.__ft.store.career.player.name)) === expect);
+  }
   await ctx.close();
 }
 

@@ -49,6 +49,10 @@ class App {
       else if (e.pointerType === 'mouse' && this.input.touchMode && !this.input.fromTouch(e)) this.setTouchMode(false);
     }, true);
     this.store = new CareerStore();
+    // CrazyGames: the career plays under the account's username (or the guest name),
+    // also when the player logs in or out during the session
+    this.syncPlayerName();
+    platform.onName(() => { this.syncPlayerName(); if (this.screens && this.screens.current === 'hub' && !this.session) this.screens.hub(); });
     this.screens = new Screens(this);
     this.session = null;
     this.menuSession = null;
@@ -61,6 +65,7 @@ class App {
     this.adapt = { on: this.params.has('adapt') || (!navigator.webdriver && !this.fpsCap), ema: 1 / 60, scale: 1, floor: 0.5, low: 0, high: 0, check: null };
 
     this.input.onPause = () => this.togglePause();
+    this.input.onToggleLock = () => this.toggleLock();
     // Enter skips the tutorial (its Skip button can't be clicked while the mouse is captured)
     this.input.onSkip = () => { if (this.session && this.session.tutorial && !this.paused) this.screens.skipTutorial(); };
     // a click on the game while playing without the mouse captured captures it
@@ -71,8 +76,8 @@ class App {
     // Esc (the browser's key for freeing the mouse and leaving fullscreen) never opens the
     // pause menu: the match just waits for a click; losing the window is a real pause
     this.input.onLockLost = () => { if (this.session && !this.paused) this.pause(document.hasFocus() ? 'lock' : 'blur'); };
-    this.input.onLockGained = () => { if (this.session && this.awaitingLock) this.unpause(); };
-    this.input.onLockError = () => { if (this.session && this.awaitingLock) { this.awaitingLock = false; this.screens.lockRefused(); } };
+    this.input.onLockGained = () => { this.lockFails = 0; if (this.session && this.awaitingLock) this.unpause(); };
+    this.input.onLockError = () => { if (this.session && this.awaitingLock) this.lockFailed(); };
     document.addEventListener('visibilitychange', () => { if (document.hidden) this.onBlur(); else this.onFocus(); });
     window.addEventListener('blur', () => this.onBlur());
     window.addEventListener('focus', () => this.onFocus());
@@ -138,9 +143,10 @@ class App {
     if (this.onFrame) this.onFrame(dt);
   }
 
-  // the platform hears when real play starts and stops (pauses for lost focus don't count)
+  // the platform hears when real play starts and stops: any pause (the menu, a lost
+  // focus, the freed cursor, an ad) is a stop, and play resuming is a start
   updatePlatform() {
-    platform.setGameplay(!!this.session && !this.session.ended && !this.adHold && (!this.paused || this.pausedByBlur));
+    platform.setGameplay(!!this.session && !this.session.ended && !this.adHold && !this.paused);
   }
 
   // a video ad started or ended: play stops while it runs (it needs the mouse), and on
@@ -199,18 +205,27 @@ class App {
     }
   }
 
-  // playing without the mouse captured (after an ad): a hint that one click captures it
+  // playing without the mouse captured (after an ad): a hint that one click captures it;
+  // in drag-to-look, a reminder that Tab captures it
   updateLockHint() {
     const show = !!(this.session && !this.paused && !this.countdown && !this.hud.root.classList.contains('counting') && !this.session.ended && this.session.cfg.mode !== 'tutorial' && this.session.human
       && this.input.active && !this.input.touchMode && !this.input.locked && !this.input.dragMode);
-    if (!this.lockHint) {
-      if (!show) return;
+    if (!this.lockHint && show) {
       this.lockHint = document.createElement('div');
       this.lockHint.className = 'tut-click';
       this.lockHint.innerHTML = 'Click to take control<small>the mouse looks and aims</small>';
       this.uiRoot.appendChild(this.lockHint);
     }
-    this.lockHint.hidden = !show;
+    if (this.lockHint) this.lockHint.hidden = !show;
+    // drag-to-look: a small reminder that Tab captures the cursor again
+    const drag = !!(this.session && !this.paused && !this.session.ended && this.session.human && this.input.active && !this.input.touchMode && !this.input.locked && this.input.dragMode);
+    if (!this.dragHint && drag) {
+      this.dragHint = document.createElement('div');
+      this.dragHint.className = 'drag-hint';
+      this.dragHint.textContent = 'Drag to look · Tab captures the cursor';
+      this.uiRoot.appendChild(this.dragHint);
+    }
+    if (this.dragHint) this.dragHint.hidden = !drag;
   }
 
   // half time is a natural break: a midgame ad if the platform has one (the match
@@ -253,6 +268,13 @@ class App {
       this.view.setResolutionScale(a.scale);
       a.high = 0;
     }
+  }
+
+  syncPlayerName() {
+    const name = platform.lockedName, c = this.store.career;
+    if (!name || !c || c.player.name === name) return;
+    c.player.name = name;
+    this.store.save();
   }
 
   setTouchMode(on) {
@@ -421,16 +443,43 @@ class App {
     this.input.active = true;
     // touch screens have no pointer lock: the on-screen controls take over
     if (this.input.touchMode) { this.tryFullscreen(); this.unpause(); return; }
-    if (this.input.dragMode || this.input.locked) { this.unpause(); return; }
+    if (this.input.locked) { this.unpause(); return; }
+    // drag-look the player chose (or a browser without pointer lock) carries on as it is;
+    // Tab captures the cursor from there
+    if (this.input.dragMode) { this.unpause(); return; }
     // stay paused until the browser actually grants pointer lock
     this.screens.clear();
     this.awaitingLock = true;
-    const ok = this.input.requestLock();
-    if (!ok) { this.awaitingLock = false; this.unpause(); return; }
+    this.requestLockSoon();
+  }
+  // browsers refuse to capture the cursor again for about a second after Esc freed it:
+  // within that second the request waits (the click's permission lasts long enough)
+  requestLockSoon() {
+    clearTimeout(this.lockDelay);
     clearTimeout(this.lockTimer);
-    this.lockTimer = setTimeout(() => {
-      if (this.awaitingLock && !this.input.locked) { this.awaitingLock = false; this.screens.lockRefused(); }
-    }, 1500);
+    const wait = Math.max(0, this.input.lastLockExit + 1150 - performance.now());
+    const go = () => {
+      if (!this.input.requestLock()) { this.awaitingLock = false; this.input.dragMode = true; this.unpause(); return; }
+      this.lockTimer = setTimeout(() => { if (this.awaitingLock && !this.input.locked) this.lockFailed(); }, 1500);
+    };
+    if (wait > 0) this.lockDelay = setTimeout(go, wait); else go();
+  }
+  // the cursor wasn't captured: no warning, just ask for another click (after two misses
+  // drag-to-look is offered too)
+  lockFailed() {
+    this.awaitingLock = false;
+    clearTimeout(this.lockTimer);
+    this.lockFails = (this.lockFails || 0) + 1;
+    if (this.session && this.paused) this.screens.clickToPlay({ resume: true, retry: this.lockFails });
+  }
+  // Tab: free the cursor (the match waits) or capture it again (also out of drag-look)
+  toggleLock() {
+    if (!this.session || this.session.ended || this.input.touchMode || this.pausedForAd || platform.adPlaying) return;
+    if (this.input.locked) { this.pause('lock'); return; }
+    this.input.dragMode = false;
+    if (this.paused) { this.resume(); return; }
+    this.awaitingLock = false;
+    this.requestLockSoon();
   }
   unpause() {
     this.awaitingLock = false;

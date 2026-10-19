@@ -1,4 +1,5 @@
 // Builds match team configurations from clubs (AI squads + the human player).
+import { platform, GUEST_NAME } from '../platform/crazygames.js';
 import { clubStrength, squadName } from './clubs.js';
 import { FORMATIONS, formationFor } from '../sim/formations.js';
 import { Rng, hashString } from '../sim/rng.js';
@@ -49,7 +50,7 @@ export function buildTeamConfig(club, o = {}) {
 
 export function defaultPlayer() {
   return {
-    name: 'A. Newcomer', number: 9, nationality: 'England', foot: 'R', role: 'ST',
+    name: platform.lockedName || GUEST_NAME, number: 9, nationality: 'England', foot: 'R', role: 'ST',
     attrs: { pace: 52, stamina: 50, control: 50, passing: 48, finishing: 54, tackling: 42 },
     look: { skin: '#e0b48c', hair: '#3b2a1e', boots: '#111111' },
   };

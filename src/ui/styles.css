@@ -142,6 +142,8 @@ input.range:hover::-webkit-slider-thumb { transform: scale(1.12); }
 input.range:active::-webkit-slider-thumb { transform: scale(0.95); }
 /* text field */
 .field { width: 100%; font: 800 18px var(--f-body); color: #fff; background: var(--bg); border: var(--bw) solid var(--line); border-radius: var(--r); padding: 0 var(--s4); min-height: var(--h-md); outline: none; box-shadow: inset 0 3px 0 rgba(0, 0, 0, 0.35); transition: border-color var(--t), box-shadow var(--t); }
+.field.locked { display: flex; align-items: center; gap: var(--s2); color: var(--text2); cursor: default; user-select: none; }
+.field.locked span { color: #fff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .field:focus { border-color: var(--accent); box-shadow: inset 0 3px 0 rgba(0, 0, 0, 0.35), 0 0 0 4px rgba(47, 212, 255, 0.25); }
 /* arrow picker (one value at a time, with arrows) */
 .picker { display: flex; align-items: center; gap: var(--s2); }
@@ -271,6 +273,58 @@ table.t td.n, table.t th.n { text-align: right; font-variant-numeric: tabular-nu
 .reward.plain { background: var(--panel3); color: var(--text2); }
 @keyframes rewardIn { from { opacity: 0; transform: scale(0.5) rotate(-6deg); } }
 details.more { margin-top: var(--s3); text-align: left; }
+/* the match report: the match on the left, you on the right, the reward below; it fits
+   the window without scrolling (only an opened "More stats" may scroll) */
+.result.report { width: min(880px, 96vw); }
+.report .result-word { font-size: clamp(30px, min(9vh, 12vw), 76px); white-space: nowrap; }
+.report .scoreline .sc { white-space: nowrap; }
+/* the scorers keep to two lines here; the full list is under More stats */
+.report .scorers { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.report .more { margin-top: var(--s2); text-align: left; }
+.r-cols { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: var(--s3); align-items: stretch; margin-top: var(--s3); }
+.r-match, .r-you { background: rgba(7, 11, 29, 0.35); border: 2px solid rgba(7, 11, 29, 0.6); border-radius: var(--r); padding: var(--s2) var(--s3); display: flex; flex-direction: column; justify-content: center; min-width: 0; }
+.r-match .scoreline { margin: var(--s1) 0 var(--s2); }
+.r-you .rating-hero { margin: 0 auto; }
+.r-you .key-stats { margin: var(--s2) 0 0; }
+.r-reward { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: var(--s2) var(--s3); margin-top: var(--s3); }
+.r-reward:empty { display: none; }
+.r-reward .rw-row { margin: 0; }
+.report .actions { margin-top: var(--s2); }
+@media (max-width: 620px) {
+  .r-cols { grid-template-columns: minmax(0, 1fr); }
+  .report .scoreline .side { font-size: 12px; }
+  .report .scoreline .sc { font-size: 30px; padding: 2px var(--s3); }
+}
+@media (max-height: 560px) {
+  .report .result-word { font-size: clamp(32px, 9vh, 48px); }
+  .r-cols { margin-top: var(--s2); }
+  .report .scoreline .crest { width: 36px; height: 36px; }
+  .report .scoreline .sc { font-size: 30px; }
+  .report .scoreline .side { font-size: 12px; }
+  .report .scorers { font-size: 11px; }
+  .report .rating-hero .num { font-size: 38px; }
+  .report .mini { padding: 4px; }
+  .report .mini b { font-size: 16px; }
+  .report .reward { font-size: 14px; padding: 5px 14px; }
+  .report .btn.lg, .report .btn.rw { min-height: 42px; font-size: 15px; }
+  .report .actions .btn { min-height: 42px; }
+  .r-reward { margin-top: var(--s2); }
+  .report.panel { padding: var(--s2) var(--s4) var(--s3); }
+  .report .r-match, .report .r-you { padding: 6px var(--s2); }
+  .report .rating-hero .lab { font-size: 10px; }
+}
+@media (max-height: 380px) {
+  .report .r-title { display: none; }
+  .report .result-word { font-size: 30px; }
+  .report .scoreline { margin: 0 0 4px; }
+  .report .scoreline .crest { width: 30px; height: 30px; }
+  .report .scoreline .sc { font-size: 26px; }
+  .report .scorers { -webkit-line-clamp: 1; }
+  .report .rating-hero .num { font-size: 32px; }
+  .report .key-stats { gap: 6px; margin-top: 4px; }
+  .report .btn.lg, .report .btn.rw, .report .actions .btn { min-height: 38px; font-size: 14px; }
+  .report .reward { font-size: 13px; padding: 4px 12px; }
+}
 details.more summary { cursor: pointer; font: 900 13px var(--f-display); letter-spacing: 1px; text-transform: uppercase; color: var(--text2); list-style: none; text-align: center; padding: var(--s2); border-radius: var(--r-sm); }
 details.more summary::-webkit-details-marker { display: none; }
 details.more summary:hover { color: #fff; background: rgba(255, 255, 255, 0.06); }
@@ -540,6 +594,8 @@ html[data-touch="1"] .coach { top: calc(6px + env(safe-area-inset-top, 0px)); wi
 .boost-on { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: var(--r-pill); background: rgba(51, 211, 108, 0.16); border: 2px solid var(--success); color: #9ff0bc; font: 900 13px var(--f-display); text-transform: uppercase; letter-spacing: 0.5px; }
 /* the first-run tutorial: one click captures the mouse (the game is already running) */
 .tut-click { position: absolute; left: 50%; top: 58%; transform: translate(-50%, -50%); pointer-events: none; text-align: center; color: #fff; font: 900 30px/1.1 var(--f-display); text-transform: uppercase; letter-spacing: 1px; text-shadow: 0 4px 0 var(--line), 0 0 24px rgba(0, 0, 0, 0.5); animation: tutClick 1.1s ease-in-out infinite alternate; z-index: 6; }
+.drag-hint { position: absolute; left: 50%; top: calc(86px + env(safe-area-inset-top, 0px)); transform: translateX(-50%); font: 800 13px var(--f-body); color: #fff; background: rgba(14, 20, 48, 0.85); border: 2px solid var(--line); border-radius: var(--r-pill); padding: 5px 14px; white-space: nowrap; pointer-events: none; z-index: 6; }
+.drag-hint[hidden] { display: none; }
 .tut-click small { display: block; margin-top: 8px; font: 800 15px var(--f-body); text-transform: none; letter-spacing: 0; color: var(--text2); }
 .tut-click[hidden] { display: none; }
 @keyframes tutClick { from { opacity: 0.75; transform: translate(-50%, -50%) scale(0.97); } to { opacity: 1; transform: translate(-50%, -50%) scale(1.03); } }

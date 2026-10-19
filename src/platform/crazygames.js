@@ -16,6 +16,8 @@
 // - the game is muted and paused while a video ad plays; the platform's mute setting
 //   silences the game.
 // - no fullscreen requests of our own (the platform has its own fullscreen button).
+// - the player's name is locked: a logged-in player plays under their CrazyGames
+//   username, a guest under the game's default name; nobody can type their own.
 import { useStorage, SAVE_KEYS } from '../core/storage.js';
 
 const INIT_TIMEOUT = 10000;
@@ -29,6 +31,8 @@ const AD_GAP = 60000;
 const ADS_OFF = /disabled|basic|adblock/i;
 
 const errCode = (e) => String((e && (e.code || e.message)) || e || 'error');
+// the name guests play under (logged-in players get their CrazyGames username)
+export const GUEST_NAME = 'A. Newcomer';
 
 export const platform = {
   sdk: null, // the SDK, once initialised in a usable environment
@@ -42,10 +46,17 @@ export const platform = {
   muted: false,
   muteListeners: [],
   adListeners: [],
+  user: null, // the CrazyGames account ({ username, ... }) or null for a guest
+  nameListeners: [],
 
   get active() { return !!this.sdk; },
   // rewarded ad buttons are only offered when an ad can actually be watched
   get rewardedReady() { return !!this.sdk && !this.rewardedOff; },
+  // on CrazyGames the player's name can't be chosen: the account's username, or the guest
+  // name; null elsewhere (the name is then typed in when creating a player)
+  get lockedName() { return this.sdk ? (this.user && this.user.username) || GUEST_NAME : null; },
+  // fn(name): the player logged in or out during the session
+  onName(fn) { this.nameListeners.push(fn); },
 
   async init() {
     const CG = window.CrazyGames && window.CrazyGames.SDK;
@@ -68,6 +79,20 @@ export const platform = {
       this.muted = !!(CG.game.settings && CG.game.settings.muteAudio);
       CG.game.addSettingsChangeListener((s) => { this.muted = !!(s && s.muteAudio); this.notifyMute(); });
     } catch (e) { /* settings not available: never muted by the platform */ }
+    // the account: logged in → its username is the player's name; guests play as guests
+    try {
+      if (CG.user && CG.user.isUserAccountAvailable !== false) {
+        let timer;
+        this.user = (await Promise.race([CG.user.getUser(), new Promise((res) => { timer = setTimeout(() => res(null), 4000); })])) || null;
+        clearTimeout(timer);
+        if (CG.user.addAuthListener) {
+          CG.user.addAuthListener((u) => {
+            this.user = u || null;
+            for (const f of this.nameListeners) f(this.lockedName);
+          });
+        }
+      }
+    } catch (e) { this.user = null; }
     // with an ad blocker no rewarded ad can play: don't offer any
     try {
       const r = CG.ad.hasAdblock && CG.ad.hasAdblock();
