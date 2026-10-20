@@ -14,6 +14,9 @@ import { AIDirector, aiParamsFor } from './ai.js';
 import { keeperHandles, keeperContact } from './keeper.js';
 import { MatchStats } from './stats.js';
 
+// a throw-in is taken this far behind the touchline (metres)
+const THROW_BEHIND = 0.6;
+
 // Difficulty shapes assistance for the human (errors, touch, dribble stickiness,
 // receiving radius, pass targeting) and how sharp the opposing team is
 // (reaction, pressing, passing mistakes, heavy touches). Teammates are unaffected.
@@ -251,6 +254,16 @@ export class Match {
         return;
       }
     }
+    // a throw-in is taken from behind the touchline: until the ball has entered the field it
+    // can't go out again; if it never enters (lands outside), the same team throws again
+    const ti = this.throwIn;
+    if (ti) {
+      if (Math.abs(p.z) - BALL_R <= PITCH.HW) this.throwIn = null;
+      else {
+        if ((p.y <= BALL_R + 0.03 && b.vel.y <= 0) || this.time - ti.t > 1.5) this.retakeThrowIn(ti);
+        return;
+      }
+    }
     if (Math.abs(p.z) - BALL_R > PITCH.HW) {
       const lt = b.lastTouch;
       const team = lt ? 1 - lt.team : (this.possTeam != null ? 1 - this.possTeam : 0);
@@ -279,6 +292,19 @@ export class Match {
       const spot = new V3(s * (PITCH.HL - AREA.GOAL_D * 0.5), 0, clamp(b.pos.z * 0.3, -2.5, 2.5));
       this.ballOut('goalkick', defending, spot);
     }
+  }
+
+  // the thrown ball never entered the field: the same team takes the throw-in again
+  retakeThrowIn(ti) {
+    const b = this.ball;
+    this.throwIn = null;
+    this.events.emit('throwRetake', { team: ti.team, t: this.time });
+    if (b.owner) b.owner = null;
+    b.state = 'free';
+    this.phase = 'stoppage';
+    this.phaseT = 0;
+    this.stoppageDelay = 0.5;
+    this.pendingRestart = { type: 'throwin', team: ti.team, spot: ti.spot.clone() };
   }
 
   ballOut(type, team, spot) {
@@ -400,6 +426,7 @@ export class Match {
     });
     b.lastKick = e;
     this.lastProgress = this.time;
+    this.throwIn = restartType === 'throwin' ? { team: p.team, spot: a.restart.spot.clone(), t: this.time } : null;
     if (info.target && PASS_KINDS.has(a.kind)) this.passIntent = { target: info.target, point: info.point, t: this.time, from: p };
     else this.passIntent = a.kind === 'shot' ? null : this.passIntent;
     if (a.restart && this.phase === 'restart') {
@@ -429,6 +456,7 @@ export class Match {
     b.place(spot.x, spot.z);
     b.state = 'dead';
     b.lastKick = null;
+    this.throwIn = null;
     for (const p of this.players) {
       if (p.action && p.action.type !== 'celebrate') p.action = null;
       p.faceYaw = null;
@@ -483,9 +511,10 @@ export class Match {
     const gs = this.attackDir(taker.team);
     let fx, fz;
     if (r.type === 'throwin') {
+      // behind the touchline, facing into the pitch: the ball is thrown in from outside
       fx = 0.3 * gs; fz = -Math.sign(spot.z);
       const l = Math.hypot(fx, fz); fx /= l; fz /= l;
-      taker.pos.set(spot.x - fx * 0.35, 0, spot.z - fz * 0.35);
+      taker.pos.set(spot.x, 0, spot.z + Math.sign(spot.z) * THROW_BEHIND);
     } else {
       // face roughly toward the opponent goal / pitch centre
       const tx = r.type === 'corner' ? spot.x - gs * 8 : gs * PITCH.HL;

@@ -108,10 +108,20 @@ function startDive(match, gk, targetZ, targetX, handY, delay = 0.07) {
   const dirZ = Math.sign(dz) || 1;
   const fwd = clamp(dx, -0.8, 0.8) * 0.3;
   const l = Math.hypot(dirZ, fwd);
-  const dist = clamp(lateral - 0.35, 0.3, 1.95 + gk.keeping * 0.004);
+  let dist = clamp(lateral - 0.35, 0.3, 1.95 + gk.keeping * 0.004);
+  // never further than just past the post: a dive saves the goal, it doesn't leave it
+  const maxZ = GOAL.HW + 1.0;
+  if (Math.abs(gk.pos.z + dirZ * dist) > maxZ) dist = Math.max(0.3, maxZ - gk.pos.z * dirZ);
   gk.action = { type: 'dive', t: 0, delay, flight: 0.56 - gk.keeping * 0.0008, dist, dirX: fwd / l, dirZ: dirZ / l, handY: clamp(handY, 0.15, 2.3), dur: 1.25 };
   gk.yaw = yawOf(match.attackDir(gk.team), 0);
   match.events.emit('dive', { player: gk, t: match.time });
+}
+
+// A dive runs to its end whatever happens meanwhile (a goal, the ball going out): the
+// AI calls this in every phase, so the keeper lands and stops instead of sliding on
+export function continueDive(match, gk, dt) {
+  if (gk.action && gk.action.type === 'dive') { updateDive(match, gk, gk.action, dt); gk.desired.set(0, 0, 0); return true; }
+  return false;
 }
 
 function updateDive(match, gk, a, dt) {

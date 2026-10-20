@@ -7,7 +7,7 @@ import { PITCH, GOAL, AREA, RULES } from './constants.js';
 import { ROLE_BOUNDS } from './formations.js';
 import { startKick, startTackle, startSlide, canAct } from './actions.js';
 import { laneOpenness, leadPoint, goalAngle, clampInPitch } from './passing.js';
-import { updateKeeper, inOwnBox } from './keeper.js';
+import { updateKeeper, inOwnBox, continueDive } from './keeper.js';
 
 const tA = new V3(), tB = new V3(), tC = new V3();
 
@@ -77,6 +77,7 @@ export class AIDirector {
       if (p.isHuman || p.scripted) continue;
       p.sprint = false;
       if (p.isGK) {
+        if (m.phase !== 'playing' && continueDive(m, p, dt)) continue;
         if (m.phase === 'playing' || (m.ball.state === 'held' && m.ball.owner === p)) updateKeeper(m, p, dt, this.params(p.team));
         else this.nonPlayingMove(p);
         continue;

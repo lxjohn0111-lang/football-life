@@ -307,6 +307,17 @@ export function performKick(match, p, a) {
       if (a.kind === 'throw' && s > 15.5) vel.scale(15.5 / s);
       rotateXZ(vel, gauss(rng) * errScale('pass') * 1.2);
       vel.y *= 1 + gauss(rng) * 0.03;
+      // a throw-in always goes into the pitch: at least ~17 degrees in from the touchline,
+      // even when aimed at a teammate standing on the line (or out of the ground)
+      if (a.kind === 'throw') {
+        const inward = -Math.sign(from.z) || 1;
+        const h = Math.hypot(vel.x, vel.z);
+        const minIn = h * 0.3;
+        if (h > 0.1 && vel.z * inward < minIn) {
+          vel.z = inward * minIn;
+          vel.x = Math.sign(vel.x || 1) * Math.sqrt(Math.max(0, h * h - minIn * minIn));
+        }
+      }
       break;
     }
     case 'shot': {

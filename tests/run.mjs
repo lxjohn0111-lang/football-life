@@ -298,6 +298,72 @@ test('calling for the ball works while a teammate takes a restart', () => {
   run(m, 0.05);
   assert.ok(h.requestUntil > m.time, 'request registered during the restart');
 });
+// QA: a throw-in toward a teammate standing near the touchline went straight out again
+// and gave the ball to the opponents
+for (const [label, aim] of [['down the line to a teammate', 'mate'], ['aimed out of the ground', 'out']]) {
+  test(`a throw-in ${label} is taken from behind the line and enters the pitch`, () => {
+    for (const side of [1, -1]) {
+      const m = scene({ mates: ['CM'], opps: ['DEF'] });
+      const h = m.human, mate = m.teams[0].players.find((p) => !p.isHuman), opp = m.teams[1].players[0];
+      const spot = new V3(0, 0, side * PITCH.HW);
+      h.pos.set(0, 0, side * (PITCH.HW - 2));
+      mate.pos.set(9, 0, side * (PITCH.HW - 0.7)); // on the line, down the touchline
+      opp.pos.set(-6, 0, side * 5);
+      m.setupRestart({ type: 'throwin', team: 0, spot });
+      assert.equal(m.restart.taker, h);
+      run(m, 0.2);
+      assert.ok(Math.abs(h.pos.z) > PITCH.HW + 0.3, `thrower behind the line (z ${h.pos.z.toFixed(2)})`);
+      const yaw = aim === 'mate' ? Math.atan2(mate.pos.x - h.pos.x, mate.pos.z - h.pos.z) : Math.atan2(0.2, side);
+      h.yaw = yaw; m.humanCtl.input.yaw = yaw; m.humanCtl.input.pitch = 0;
+      const outs = [];
+      m.events.on('out', (e) => outs.push(e));
+      run(m, 1.2);
+      m.humanCtl.press(aim === 'mate' ? 'pass' : 'shoot');
+      run(m, 0.05); m.humanCtl.release(aim === 'mate' ? 'pass' : 'shoot');
+      let entered = false;
+      run(m, 2.5, () => { if (Math.abs(m.ball.pos.z) - BALL_R <= PITCH.HW) entered = true; });
+      assert.ok(entered, 'the ball entered the pitch');
+      assert.ok(!outs.some((e) => e.team === 1), `no throw-in for the opponents (${outs.map((e) => e.restart + ':' + e.team).join(',')})`);
+    }
+  });
+}
+test('a throw-in that never enters the pitch is retaken by the same team', () => {
+  const m = scene({});
+  m.human.pos.set(0, 0, 0);
+  // a throw in flight that drops behind the touchline without ever crossing it
+  m.throwIn = { team: 0, spot: new V3(3, 0, PITCH.HW), t: m.time };
+  m.ball.place(3, PITCH.HW + 0.7); m.ball.pos.y = 1.2; m.ball.state = 'air'; m.ball.setVelocity(new V3(0, -1, 0.3));
+  const retakes = [], outs = [];
+  m.events.on('throwRetake', (e) => retakes.push(e));
+  m.events.on('out', (e) => outs.push(e));
+  run(m, 2);
+  assert.equal(retakes.length, 1, 'retaken');
+  assert.equal(outs.length, 0, 'not given to the other team');
+  assert.equal(m.restart && m.restart.type, 'throwin');
+  assert.equal(m.restart.team, 0, 'same team throws again');
+});
+// QA: on penalties (and sometimes in open play) the keeper's dive carried on after the
+// goal and he slid all the way to the touchline
+test('a diving keeper lands near his goal and stops, also when the ball goes in', () => {
+  let worst = 0;
+  for (let seed = 1; seed <= 12; seed++) {
+    const m = makeMatch({ seed, halfLength: 600 });
+    m.start(0);
+    let n = 0; while (m.phase !== 'playing' && n++ < 4000) m.step(DT);
+    const gx = m.ownGoalX(0);
+    m.setupRestart({ type: 'penalty', team: 1, spot: new V3(gx - Math.sign(gx) * 8, 0, 0) });
+    const gk = m.teams[0].players.find((p) => p.isGK);
+    let dived = false;
+    for (let i = 0; i < 120 * 6; i++) {
+      m.step(DT);
+      if (gk.action && gk.action.type === 'dive') dived = true;
+      if (dived) worst = Math.max(worst, Math.abs(gk.pos.z));
+    }
+    assert.ok(dived, 'the keeper dived');
+    assert.ok(!(gk.action && gk.action.type === 'dive'), 'the dive ended');
+  }
+  assert.ok(worst < GOAL.HW + 1.2, `keeper stayed by his goal (max |z| ${worst.toFixed(2)})`);
+});
 test('the human\'s tackle reaches a carrier 2.5 m away and wins the ball', () => {
   let won = 0;
   for (let k = 0; k < 4; k++) {
