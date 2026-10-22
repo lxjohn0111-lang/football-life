@@ -34,6 +34,7 @@ three.js r186 is vendored unmodified in `vendor/three/` (MIT, see `vendor/three/
 ```sh
 npm run crazygames      # rebuilds, then writes crazygames/upload/ (index.html + game.js) and crazygames/first-touch-crazygames.zip
 npm run covers          # renders the three cover images into crazygames/covers/
+npm run video           # records a 20 s silent portrait (1080x1920) gameplay video into crazygames/video/ (needs ffmpeg)
 ```
 
 The upload's `index.html` loads the CrazyGames HTML5 SDK v3. `crazygames/SUBMISSION.md` lists what to upload, the portal fields (description, controls, tags) and the settings to turn on, above all **Progress Save**, which the game's saves need. Test the build locally at `http://localhost:8080/crazygames/upload/index.html` with `node server.js` running.
