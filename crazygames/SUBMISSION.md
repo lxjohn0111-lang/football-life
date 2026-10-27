@@ -16,7 +16,7 @@ The covers are rendered from the game itself and carry only the game's title (no
 
 1. Developer portal → **Submit game** → **HTML5**. Upload `first-touch-crazygames.zip` (or the files in `upload/`). The entry file is `index.html`.
 2. **Progress Save: turn it ON.** The game saves the career, settings, visual style and tutorial state through the SDK's data module. If the toggle is off the data module is disabled; the game then falls back to the browser's localStorage, so nothing breaks, but saves won't follow logged-in players across devices.
-3. SDK: HTML5 SDK **v3** (already loaded by `index.html`). Ads used: **midgame** and **rewarded** (no banners; see "What the game does with the SDK" below).
+3. SDK: HTML5 SDK **v3** (already loaded by `index.html`). Ads used: **midgame**, **rewarded** and **banners** (career hub only; see "What the game does with the SDK" below).
 4. Fill in the fields below, add the three covers, then check the game in the portal's preview/QA tool before submitting (see "Checking it" below).
 
 ## Portal fields
@@ -63,7 +63,7 @@ Start at a community club and work your way up five tiers, from League Two to th
 
 **Platforms and orientation:** desktop and mobile (phones and tablets). Best played in landscape; in portrait the game still works and shows a hint to turn the phone.
 
-**Other answers:** single player, no multiplayer, no in-game purchases, no external links, no chat, no user-generated content. English only. Works without an account. Ads: midgame and rewarded through the SDK only, no banners.
+**Other answers:** single player, no multiplayer, no in-game purchases, no external links, no chat, no user-generated content. English only. Works without an account. Ads: midgame, rewarded and banners (career hub only) through the SDK only.
 
 ## First-time players
 
@@ -84,7 +84,12 @@ In `src/platform/crazygames.js`:
   - **Match boost** in the career hub: +6 to all the player's attributes for the next career match.
   - **Extra XP session** in Training once the free XP drill is used, or claim a drill's XP from its result.
   None of them is needed to progress. They aren't shown when no ad can play (no SDK, an ad blocker, an ad error saying ads are disabled), so there are never rewarded buttons without effect; an unfilled ad shows "No ad is available right now".
-- **No banners.**
+- **Banners** (`banner.requestBanner` / `clearBanner`, `src/platform/banners.js`) in the **career hub only**, the screen players stay on between career matches. Following the earlier QA notes:
+  - They are **part of the hub's layout**, not a separate frame: each banner sits in a card drawn like the hub's other panels, a wide card under the panels (728x90, 468x60, 320x100 or 320x50, whichever fits the window; on phones right after the match card) and, on screens at least 1360x640, a 300x250 card as a third column next to them. On computers the banners are in view without scrolling, down to about 960x540 (the hub gets more compact in short windows). No banner covers a button or text, and toasts move out of its way.
+  - **No banner on the main menu** (players leave it too quickly), in play, on result screens or in dialogs.
+  - A banner is requested only after the hub has been on screen for a moment and only when its card is fully in view (on phones the hub scrolls), so quick navigation never wastes a request.
+  - Refreshed every **30 seconds** (the SDK minimum) while in view, up to 120 times per size in a session. Re-drawing the hub (an upgrade, a reward) keeps the banner; leaving the hub clears it.
+  - Until a banner is served, its card shows a game tip instead of an empty box. If the SDK refuses banners (Basic Launch, the mobile app) the cards leave the hub for the session.
 - **Saving** (`data.setItem`) only when something worth saving happens: the career after creation, matches, training, upgrades and transfers; the settings and visual style once, when the player presses Done (never on every slider move).
 - **Audio:** the platform's mute setting (`game.settings.muteAudio` and its change listener) silences the game.
 - **Fullscreen:** on CrazyGames the game doesn't request fullscreen itself (the platform has its own button). The browser context menu is disabled.
@@ -93,7 +98,7 @@ In `src/platform/crazygames.js`:
 ## Checking it
 
 - **Locally:** `npm run build && npm run crazygames`, `node server.js`, then open `http://localhost:8080/crazygames/upload/index.html`. On localhost the SDK runs in its "local" environment (demo ads, local saves).
-- **Automated:** `node tests/crazygames.mjs` drives the upload build with a stand-in SDK (`tests/fakes/crazygames-sdk.js`): saves through the data module and back after a reload, the localStorage copy, settings saved once on Done, loading and gameplay events, focus-loss pauses, Esc never opening the pause menu, platform mute, happytime on a win; midgame ads at kick-off, Play again and half time (match frozen, paused and muted, the second half starting by itself after the countdown), none on navigational buttons, never two in a row; no banners; rewarded ads (boost, double XP, extra training) rewarding only finished ads, a failing ad, no rewarded buttons with an ad blocker or without the SDK; and the localStorage fallbacks. `node tests/tutorial.mjs` checks the first-run flow (straight into play, Skip, Enter, P, Esc unused, replay). The real SDK could not be reached from the build environment, so do a final check in the portal's preview/QA tool: an ad at half time (the second half should start by itself), a rewarded ad, saving after a match and reloading, and a phone in landscape.
+- **Automated:** `node tests/crazygames.mjs` drives the upload build with a stand-in SDK (`tests/fakes/crazygames-sdk.js`): saves through the data module and back after a reload, the localStorage copy, settings saved once on Done, loading and gameplay events, focus-loss pauses, Esc never opening the pause menu, platform mute, happytime on a win; midgame ads at kick-off, Play again and half time (match frozen, paused and muted, the second half starting by itself after the countdown), none on navigational buttons, never two in a row; banners in the career hub only, inside its layout (sizes from 1920x1080 down to phones, requested only in view and after a moment, kept through re-draws, refreshed no faster than allowed, gone in Training, in play and on the report, off in Basic Launch); rewarded ads (boost, double XP, extra training) rewarding only finished ads, a failing ad, no rewarded buttons with an ad blocker or without the SDK; and the localStorage fallbacks. `node tests/tutorial.mjs` checks the first-run flow (straight into play, Skip, Enter, P, Esc unused, replay). The real SDK could not be reached from the build environment, so do a final check in the portal's preview/QA tool: the hub banner (it shows after a moment in the career hub), an ad at half time (the second half should start by itself), a rewarded ad, saving after a match and reloading, and a phone in landscape.
 
 ## Rebuilding
 

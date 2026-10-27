@@ -311,6 +311,9 @@ export class Screens {
     const tabs = [['player', 'Player', icon('user', 16), p.points], ['table', 'Table', icon('chart', 16)], ['transfers', 'Transfers', icon('swap', 16)], ['history', 'History', icon('trophy', 16)]];
     const body = { player: tPlayer, table: tTable, transfers: tTransfers, history: tHistory };
     const xp = Math.max(0, Math.min(100, p.xp));
+    // banner ads (CrazyGames only) sit in the hub's own layout: a third column on wide
+    // screens and a wide card under the panels (after the match card on phones)
+    const adSide = app.banners.card('side'), adWide = app.banners.card('wide');
 
     const el = this.show(`
       <div class="topbar">
@@ -319,12 +322,13 @@ export class Screens {
         <div class="lvl" title="Level ${p.level}"><div class="ring">${p.level}</div><div><div class="small" style="font-weight:800">XP ${p.xp}/100</div><div class="bar gold"><i style="width:${xp}%"></i></div></div></div>
         <button class="btn icon" data-act="menu" title="Main Menu" aria-label="Main Menu">${icon('home')}</button>
       </div>
-      <div class="hub-main">
+      <div class="hub-main${adSide ? ' with-ad' : ''}">
         ${main}
-        <div class="panel">
+        <div class="panel tabs-panel">
           <div class="tabs">${tabs.map(([k, l, ic, n]) => `<button class="tab ${k === tab ? 'on' : ''}" data-tab="${k}">${ic} ${l}${n ? `<span class="dot-new">${n}</span>` : ''}</button>`).join('')}</div>
           ${tabs.map(([k]) => `<div class="tab-body" data-body="${k}" ${k === tab ? '' : 'hidden'}>${body[k]}</div>`).join('')}
         </div>
+        ${adSide}${adWide}
       </div>`, {
       menu: () => { this.hubTab = null; this.mainMenu(); },
       play: () => this.adBreak(() => this.app.playCareerMatch()),
@@ -340,7 +344,7 @@ export class Screens {
       up: (b) => { if (upgradeAttr(c, b.dataset.k)) { this.saveCareer(); this.sfx('uiReward', 0.3); this.hub('player'); } },
       accept: (b) => { acceptOffer(c, +b.dataset.i); this.saveCareer(); this.sfx('uiReward', 0.4); this.hub(); },
       decline: () => { declineWindow(c); this.saveCareer(); this.hub(); },
-    }, 'screen hub');
+    }, `screen hub${adSide || adWide ? ' ads' : ''}`);
     el.querySelectorAll('.tab').forEach((t) => t.addEventListener('click', () => {
       this.hubTab = t.dataset.tab;
       el.querySelectorAll('.tab').forEach((x) => x.classList.toggle('on', x === t));

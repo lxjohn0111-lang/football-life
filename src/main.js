@@ -17,6 +17,7 @@ import { prepareMatch } from './career/career.js';
 import { hashString } from './sim/rng.js';
 import { tutorialSeen } from './game/tutorial.js';
 import { platform } from './platform/crazygames.js';
+import { Banners } from './platform/banners.js';
 
 class App {
   constructor() {
@@ -93,6 +94,7 @@ class App {
     this.platform = platform;
     platform.onMute((m) => this.audio.setPlatformMute(m));
     platform.onAd((on) => this.onAd(on));
+    this.banners = new Banners(this.uiRoot);
 
     document.getElementById('boot')?.remove();
     const auto = this.params.get('auto');
@@ -144,9 +146,11 @@ class App {
   }
 
   // the platform hears when real play starts and stops: any pause (the menu, a lost
-  // focus, the freed cursor, an ad) is a stop, and play resuming is a start
+  // focus, the freed cursor, an ad) is a stop, and play resuming is a start; banners
+  // show in the career hub only
   updatePlatform() {
     platform.setGameplay(!!this.session && !this.session.ended && !this.adHold && !this.paused);
+    this.banners.update(this.screens.current === 'hub' && !(this.session && !this.session.ended));
   }
 
   // a video ad started or ended: play stops while it runs (it needs the mouse), and on

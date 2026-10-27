@@ -6,8 +6,12 @@
 // Ads: midgame ads only just before play starts (kick-off from the menus, Play again, the
 // second half), never on navigational buttons and never two video ads back to back, the
 // game paused and muted while one plays and the second half starting by itself after a
-// half-time ad; no banners at all; rewarded ads (match boost, double XP, extra training)
-// that give their reward only when watched, and aren't offered when no ad can play.
+// half-time ad; banners in the career hub only, inside its layout (sized to the window,
+// requested only once the hub has been up for a moment and the banner is fully in view,
+// kept through the hub's re-draws, refreshed no faster than the SDK allows, gone in play
+// and on every other screen, off in Basic Launch); rewarded ads (match boost, double XP,
+// extra training) that give their reward only when watched, and aren't offered when no ad
+// can play.
 // Also: settings are saved once (Done), Esc freeing the mouse never opens the menu, Tab
 // frees and captures the cursor (gameplayStop / gameplayStart with it), a refused capture
 // just asks for another click, drag-to-look can go back to a captured cursor, and the
@@ -155,7 +159,7 @@ for (const [query, label] of [['&cgenv=disabled', 'other domains (SDK disabled)'
   await ctx.close();
 }
 
-// ---------------------------------------------------------------- where midgame ads may show, no banners
+// ---------------------------------------------------------------- where midgame ads may show
 const midgames = async (page) => (await calls(page)).filter((x) => x === 'requestAd:midgame').length;
 const toFullTime = (page) => page.evaluate(() => { const a = window.__ft, s = a.session, m = s.match; a.halftimeBreak = () => {}; let n = 0; while (m.phase !== 'fulltime' && n++ < 120 * 900) { m.step(1 / 120); if (m.phase === 'goal' || m.phase === 'halftime') m.requestSkip(); } m.phaseT = 5; s.frame(1 / 30); });
 {
@@ -164,7 +168,7 @@ const toFullTime = (page) => page.evaluate(() => { const a = window.__ft, s = a.
   const page = await open(ctx, '&half=6');
   await page.evaluate(() => { window.__ft.view.noDraw = true; });
   await page.waitForTimeout(1500);
-  check('no banners anywhere', !(await calls(page)).some((x) => /banner/i.test(x)) && (await page.evaluate(() => !document.querySelector('.ad-slot'))));
+  check('no banner on the main menu', !(await calls(page)).some((x) => /banner/i.test(x)) && (await page.evaluate(() => !document.querySelector('.ad-card') && [...document.querySelectorAll('.ad-slot')].every((e) => e.hidden))));
   await page.click('[data-act="quick"]');
   await page.click('[data-act="go"]');
   await page.waitForFunction(() => window.__ft.session && window.__ft.screens.current === 'click', null, { timeout: 30000 });
@@ -187,6 +191,137 @@ const toFullTime = (page) => page.evaluate(() => { const a = window.__ft, s = a.
   await page.click('[data-act="change"]');
   await page.waitForTimeout(300);
   check('Change teams on the result screen shows no ad', (await midgames(page)) === 1 && (await page.evaluate(() => window.__ft.screens.current === 'quick')));
+  await ctx.close();
+}
+
+// ---------------------------------------------------------------- banners: career hub only, in its layout
+const adState = (page) => page.evaluate(() => {
+  const r = (e) => { const b = e.getBoundingClientRect(); return { l: b.left, t: b.top, r: b.right, b: b.bottom, w: b.width, h: b.height }; };
+  const scr = document.querySelector('.screens .screen');
+  const sr = scr && r(scr);
+  const slots = [...document.querySelectorAll('.ad-slot')].filter((e) => !e.hidden).map((e) => {
+    const box = e.querySelector('.ad-box');
+    const card = document.querySelector(`.ad-card[data-ad="${box.id === 'cg-banner-side' ? 'side' : 'wide'}"]`);
+    return { id: box.id, box: r(box), hole: card && r(card.querySelector('.ad-hole')), card: card && r(card), filled: !!box.firstChild, label: !!card && getComputedStyle(card.querySelector('.ad-label')).visibility === 'visible' };
+  });
+  // buttons where they can be seen (the screens scroll and clip what's below their edge)
+  const btns = [...document.querySelectorAll('.screens .screen button')].filter((b) => b.offsetParent).map(r)
+    .map((b) => ({ l: Math.max(b.l, sr.l), t: Math.max(b.t, sr.t), r: Math.min(b.r, sr.r), b: Math.min(b.b, sr.b) })).filter((b) => b.r > b.l && b.b > b.t);
+  return { slots, screen: sr, btns, cards: document.querySelectorAll('.ad-card').length, current: window.__ft.screens.current, vw: innerWidth, vh: innerHeight };
+});
+const overlaps = (a, b) => a.l < b.r - 0.5 && b.l < a.r - 0.5 && a.t < b.b - 0.5 && b.t < a.b - 0.5;
+const onHole = (sl) => sl.hole && Math.abs(sl.box.l - sl.hole.l) <= 1 && Math.abs(sl.box.t - sl.hole.t) <= 1 && Math.abs(sl.box.w - sl.hole.w) < 0.5 && Math.abs(sl.box.h - sl.hole.h) < 0.5;
+const bannerReqs = (page, id) => page.evaluate((id) => window.__cg.banners.filter((b) => !id || b.id === id).map((b) => ({ ...b })), id);
+const toHub = (page) => page.evaluate(() => { const s = window.__ft.screens; s.newCareer(); document.querySelector('[data-act="go"]').click(); });
+// software-rendered test browsers can drop to a few frames a second: the banners are
+// also updated on a timer here, as a real browser's frames would, and the screens'
+// entrance animation is off so positions can be compared to the pixel
+const drive = async (page) => {
+  await page.addStyleTag({ content: '.screen > * { animation: none !important; }' });
+  await page.evaluate(() => { const a = window.__ft; a.view.noDraw = true; setInterval(() => a.updatePlatform(), 40); });
+};
+{
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 720 } });
+  await ctx.addInitScript(() => { localStorage.setItem('firsttouch.tutorial', 'done'); localStorage.setItem('firsttouch.settings.v1', JSON.stringify({ rev: 3, quality: 'low' })); });
+  const page = await open(ctx, '&cgrefresh=1500&half=6');
+  await drive(page);
+  check('banners refresh every 30 s (the SDK minimum) in the real game', (await page.evaluate(() => window.__ft.banners.refreshMs)) === 30000);
+  await page.waitForTimeout(1500);
+  check('no banner on the main menu or in the menus', (await bannerReqs(page)).length === 0 && (await adState(page)).cards === 0);
+  // the hub for a moment only (passing through): no request
+  await toHub(page);
+  await page.waitForTimeout(250);
+  await page.evaluate(() => window.__ft.screens.mainMenu());
+  await page.waitForTimeout(1200);
+  check('passing through the hub quickly requests no banner', (await bannerReqs(page)).length === 0);
+  // the rest of the test runs the refresh at 1.5 s (the stand-in SDK enforces the same)
+  await page.evaluate(() => { window.__ft.banners.refreshMs = 1500; window.__ft.screens.hub(); });
+  await page.waitForTimeout(1400);
+  let st = await adState(page);
+  let b = await bannerReqs(page);
+  const wide = st.slots.find((x) => x.id === 'cg-banner-wide');
+  check('career hub: a 728x90 banner, no side banner at 1280 px', b.length === 1 && b[0].id === 'cg-banner-wide' && b[0].width === 728 && b[0].height === 90 && st.slots.length === 1 && wide && wide.filled, JSON.stringify(b.map((x) => `${x.id}:${x.width}x${x.height}`)));
+  check('it sits in a card of the hub, exactly over its hole, labelled', wide && onHole(wide) && wide.label && wide.card.t >= st.screen.t && wide.card.b <= st.screen.b && st.screen.b === st.vh && st.screen.r === st.vw, JSON.stringify(wide));
+  check('the banner is fully on screen and covers no button', wide && wide.box.t >= 0 && wide.box.b <= st.vh && st.btns.every((x) => !overlaps(x, wide.box)));
+  await page.screenshot({ path: 'tests/out/cg_hub_banner_1280x720.png' });
+  // refreshed at the allowed pace while the hub stays open
+  await page.waitForTimeout(5200);
+  const b1 = await bannerReqs(page, 'cg-banner-wide');
+  const gaps = b1.slice(1).map((x, i) => x.t - b1[i].t);
+  check('the banner refreshes as soon as allowed, never too soon', b1.length >= 3 && gaps.every((g) => g >= 1500) && (await page.evaluate(() => window.__cg.tooSoon)) === 0, `${b1.length} requests, gaps ${gaps.map((g) => Math.round(g)).join(',')}`);
+  // the hub re-draws (an upgrade, a reward): the same banner stays, over the new card
+  await page.evaluate(() => { const b = window.__ft.banners; b.refreshMs = 60000; for (const sl of b.slots) sl.next = performance.now() + 60000; });
+  await page.waitForTimeout(1700);
+  const n0 = (await bannerReqs(page)).length;
+  await page.evaluate(() => { window.__ft.screens.hub('player'); window.__ft.screens.hub('table'); });
+  await page.waitForTimeout(300);
+  st = await adState(page);
+  check('re-drawing the hub keeps the banner (no new request)', (await bannerReqs(page)).length === n0 && st.slots.length === 1 && st.slots[0].filled && onHole(st.slots[0]), JSON.stringify(st.slots));
+  // a toast moves up instead of covering the banner
+  await page.evaluate(() => window.__ft.screens.toast('Saved'));
+  const toast = await page.evaluate(() => { const b = document.querySelector('.toast').getBoundingClientRect(); return { l: b.left, t: b.top, r: b.right, b: b.bottom }; });
+  check('toasts never cover the banner', !overlaps(toast, st.slots[0].box), JSON.stringify(toast));
+  // Training from the hub: no banner there
+  await page.evaluate(() => { const b = window.__ft.banners; b.refreshMs = 1500; for (const sl of b.slots) sl.next = performance.now() + 1500; });
+  await page.click('[data-act="train"]');
+  await page.waitForTimeout(400);
+  st = await adState(page);
+  check('Training: banner cleared, none shown', st.slots.length === 0 && st.cards === 0 && (await calls(page)).includes('clearBanner:cg-banner-wide'));
+  await page.click('[data-act="back"]');
+  await page.waitForTimeout(2600);
+  st = await adState(page);
+  check('back in the hub the banner returns', st.slots.length === 1 && st.slots[0].filled && onHole(st.slots[0]), JSON.stringify(st.slots));
+  // into a match: gone, no requests while playing, none on the report
+  await page.evaluate(() => { window.__ft.platform.lastVideoAt = performance.now(); });
+  await page.click('[data-act="play"]');
+  await page.waitForFunction(() => window.__ft.session, null, { timeout: 30000 });
+  await page.evaluate(() => { const a = window.__ft; a.input.dragMode = true; a.unpause(); });
+  const nPlay = (await bannerReqs(page)).length;
+  await page.waitForTimeout(3500);
+  st = await adState(page);
+  check('no banners in a match (cleared, no requests)', st.slots.length === 0 && (await bannerReqs(page)).length === nPlay);
+  await page.evaluate(() => { const a = window.__ft; a.loop = () => {}; a.halftimeBreak = () => {}; const s = a.session, m = s.match; let n = 0; while (m.phase !== 'fulltime' && n++ < 120 * 900) { m.step(1 / 120); if (m.phase === 'goal' || m.phase === 'halftime') m.requestSkip(); } m.phaseT = 5; s.frame(1 / 30); });
+  await page.waitForSelector('[data-act="cont"]', { timeout: 30000 });
+  for (let i = 0; i < 20; i++) { await page.evaluate(() => window.__ft.updatePlatform()); await page.waitForTimeout(100); }
+  st = await adState(page);
+  check('no banner on the match report', st.current === 'report' && st.slots.length === 0 && st.cards === 0 && (await bannerReqs(page)).length === nPlay);
+  await ctx.close();
+}
+// desktop windows show the banners without any scrolling; on phones the hub scrolls
+for (const [w, h, label, expect, touch] of [[1920, 1080, 'full HD', ['728x90', '300x250'], false], [1440, 900, 'wide desktop', ['728x90', '300x250'], false], [1280, 720, '1280x720', ['728x90'], false], [1150, 590, 'CrazyGames-sized frame', ['728x90'], false], [1024, 576, 'small laptop', ['728x90'], false], [960, 540, 'small window', ['468x60'], false], [844, 390, 'phone landscape', ['320x50'], true], [390, 844, 'phone portrait', ['320x100'], true]]) {
+  const ctx = await browser.newContext({ viewport: { width: w, height: h }, ...(touch ? { isMobile: true, hasTouch: true, deviceScaleFactor: 1 } : {}) });
+  await ctx.addInitScript(() => { localStorage.setItem('firsttouch.tutorial', 'done'); localStorage.setItem('firsttouch.settings.v1', JSON.stringify({ rev: 3, quality: 'low' })); });
+  const page = await open(ctx, '&cgrefresh=1500');
+  await drive(page);
+  await toHub(page);
+  await page.waitForTimeout(1400);
+  // on small screens the hub scrolls: the banner is requested once it is fully in view
+  const before = (await bannerReqs(page)).length;
+  let st = await adState(page);
+  const inView = st.slots.length > 0;
+  await page.evaluate(() => { const s = document.querySelector('.screens .screen'); s.scrollTop = s.scrollHeight; });
+  await page.waitForTimeout(1400);
+  st = await adState(page);
+  const sizes = [...new Set((await bannerReqs(page)).map((x) => `${x.width}x${x.height}`))].sort();
+  const fits = st.slots.every((sl) => sl.box.l >= 0 && sl.box.t >= 0 && sl.box.r <= w + 0.5 && sl.box.b <= h + 0.5 && onHole(sl));
+  const clear = st.slots.every((sl) => st.btns.every((x) => !overlaps(x, sl.box)));
+  check(`${label}: ${expect.join(' + ')} in the career hub's cards, on screen${touch ? '' : ' without scrolling'}, covering nothing`, JSON.stringify(sizes) === JSON.stringify([...expect].sort()) && st.slots.length === expect.length && fits && clear && (touch ? inView || before === 0 : inView && before === expect.length), JSON.stringify({ sizes, slots: st.slots.length, fits, clear, inView, before }));
+  await page.screenshot({ path: `tests/out/cg_hub_banner_${w}x${h}.png` });
+  await ctx.close();
+}
+for (const [query, label] of [['&cgbanner=basic', 'Basic Launch'], ['&cgbanner=mobileapp', 'the CrazyGames mobile app']]) {
+  const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+  await ctx.addInitScript(() => localStorage.setItem('firsttouch.tutorial', 'done'));
+  const page = await open(ctx, query + '&cgrefresh=1500');
+  await drive(page);
+  await toHub(page);
+  await page.waitForTimeout(2500);
+  const st = await adState(page);
+  const n = (await calls(page)).filter((x) => x.startsWith('requestBanner')).length;
+  const grid = await page.evaluate(() => document.querySelector('.hub-main').className);
+  await page.evaluate(() => window.__ft.screens.hub());
+  const again = await page.evaluate(() => document.querySelectorAll('.ad-card').length);
+  check(`${label}: banners give up after the first refusal and their cards leave the hub`, n === 2 && st.slots.length === 0 && st.cards === 0 && again === 0 && !/with-ad/.test(grid), `${n} requests, ${st.cards} cards, grid "${grid}"`);
   await ctx.close();
 }
 
@@ -279,7 +414,7 @@ const totalXp = (c) => c.player.level * 100 + c.player.xp;
   await page.waitForFunction(() => window.__ft, null, { timeout: 30000 });
   await page.evaluate(() => { const s = window.__ft.screens; s.newCareer(); document.querySelector('[data-act="go"]').click(); });
   await page.waitForTimeout(500);
-  check('without the SDK: no banner slots and no rewarded buttons', await page.evaluate(() => !document.querySelector('.ad-slot') && !document.querySelector('.btn.rw')));
+  check('without the SDK: no banner cards or slots and no rewarded buttons', await page.evaluate(() => !document.querySelector('.ad-slot') && !document.querySelector('.ad-card') && !document.querySelector('.btn.rw')));
   await ctx.close();
 }
 
@@ -329,7 +464,8 @@ const totalXp = (c) => c.player.level * 100 + c.player.xp;
   await page.evaluate(() => { const a = window.__ft; a.resume(); a.input.onLockError(); });
   check('after two refusals drag-to-look is offered', await page.evaluate(() => !!document.querySelector('[data-act="drag"]')));
   await page.click('[data-act="drag"]');
-  await page.waitForTimeout(400);
+  // the hint appears with the next frame (software-rendered test browsers have few)
+  await page.waitForFunction(() => { const e = document.querySelector('.drag-hint'); return !!e && !e.hidden; }, null, { timeout: 5000 }).catch(() => {});
   s1 = await st();
   const hint = await page.evaluate(() => { const e = document.querySelector('.drag-hint'); return !!e && !e.hidden && /Tab/.test(e.textContent); });
   check('drag-to-look plays on, with a reminder that Tab captures the cursor', !s1.paused && s1.drag && hint, JSON.stringify({ ...s1, hint }));
